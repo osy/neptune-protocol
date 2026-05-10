@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Neptune MIDL Registry Schema",
+  "description": "Unified schema for Neptune MIDL parser output and overlay JSON. Version 1.",
+  "type": "object",
+  "required": ["version", "types"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "source_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "types": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/TypeObject" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "TypeObject": {
+      "type": "object",
+      "properties": {
+        "name": { "type": ["string", "null"], "default": null, "description": "Type name. null for anonymous struct/union." },
+        "primitive": {
+          "type": "string",
+          "description": "For aliases: the target C type (uint32_t, int32_t, float, etc). For composites: struct, union, enum, interface. For constants: const. For top level functions: function."
+        },
+        "source": { "type": "string", "description": "Source IDL file" },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FieldObject" },
+          "description": "Fields for struct/union, values for enum"
+        },
+        "parent": { "type": "string", "description": "Parent interface name (only for interface primitives)" },
+        "uuid": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "description": "Interface UUID (only for interface primitives)"
+        },
+        "methods": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/MethodObject" },
+          "description": "Interface methods (only for interface primitives)"
+        },
+        "value": {
+          "type": "integer",
+          "description": "For const types: the constant value"
+        },
+        "return": { "type": "string", "description": "Function types: Return type" },
+        "group": {
+          "type": "integer",
+          "description": "Function types: user assigned group ID. If missing, this function will not be accessible."
+        },
+        "id": {
+          "type": "integer",
+          "description": "Function types: user assigned unique ID. If missing, this function will not be accessible."
+        },
+        "params": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FieldObject" },
+          "description": "Function types: function params."
+        }
+      },
+      "additionalProperties": false
+    },
+    "FieldObject": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": ["string", "null"],
+          "description": "Field name. null for anonymous struct/union."
+        },
+        "type": {
+          "oneOf": [
+            { "type": "string" },
+            { "$ref": "#/$defs/TypeObject" }
+          ],
+          "description": "Type name (string) or inline anonymous type (object)"
+        },
+        "index": {
+          "type": "integer",
+          "description": "Explicit index for overlay merge (auto-incremented if absent)"
+        },
+        "indirection": {
+          "type": "integer",
+          "default": 0,
+          "description": "How many levels of pointer indirection"
+        },
+        "const": { "type": "boolean", "default": false },
+        "count": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "integer" },
+            { "type": "array", "items": { "type": "integer" } }
+          ],
+          "description": "Element count for arrays/buffers: name of the count field (variable-length), literal count (fixed-length), or array of counts (multi-dimensional). For void/blob pointers, the count is in bytes (each element is one byte)."
+        },
+        "count_output": {
+          "type": "string",
+          "description": "Only valid if output is true. Name of the field that receives the actual number of elements written."
+        },
+        "bitwidth": {
+          "type": "integer",
+          "description": "For bitfields: number of bits"
+        },
+        "condition": {
+          "description": "Expression for conditional marshal. false means always skip. 'self.' will be replaced by the variable name.",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "boolean" }
+          ]
+        },
+        "value": {
+          "type": "integer",
+          "description": "For enum fields: the enum value"
+        },
+        "input": { "type": "boolean", "default": true, "description": "For method params only" },
+        "output": { "type": "boolean", "default": false, "description": "For method params only" },
+        "optional": { "type": "boolean", "default": false, "description": "True for *_opt_ params" },
+        "handle": {
+          "type": ["string", "null"],
+          "enum": [null, "com", "win32"],
+          "default": null,
+          "description": "Type of handle"
+        },
+        "idl_param_index": {
+          "type": "integer",
+          "description": "Index of corresponding IDL parameter (for auto-dispatch mapping)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "MethodObject": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "index": {
+          "type": "integer",
+          "description": "Wire protocol method index. Auto-incremented if absent."
+        },
+        "return": { "type": "string", "description": "Return type" },
+        "id": {
+          "type": "integer",
+          "description": "COM vtable position (computed from inheritance)."
+        },
+        "params": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FieldObject" }
+        },
+        "skip_default": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, the generator emits only a forward declaration of the default thunk; the consumer must provide a hand-written body."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

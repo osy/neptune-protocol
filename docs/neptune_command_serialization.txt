@@ -1,0 +1,229 @@
+neptune_command_serialization
+=============================
+
+neptune_command_serialization defines the serialization of DirectX COM commands.
+
+DirectX commands can be serialized into command streams.  Command streams are
+normally shared with another process for parsing and execution, and can
+optionally cause reply streams to be generated.
+
+## JSON File
+
+The DirectX MIDLs are parsed into a JSON file which contains all the information
+to generate headers, encode/decode functions, and dispatch functions.
+
+### Overlays
+
+One or more overlay JSON files can be passed to the parser to augment the
+generated JSON with additional information. Each overlay is applied in the order
+that they are passed in and the rules for combining the JSONs are as follows:
+
+- Given a matching object from the base and overlay, any field that exists in
+  both the base and overlay shall have its value replaced by that of the overlay
+  UNLESS the value is an array of TypeObject, FieldObject, or MethodObject
+- Arrays of TypeObject, FieldObject, or MethodObject are combined by first
+  matching each element in the overlay. If both base and overlay object have a
+  "name" field and they match, then the objects are matched. If the overlay
+  object has an "index" field, then it will match the object at the position
+  in the base array defined by the index. If there is no match, then the overlay
+  object is appended to the end of the base array.
+
+Only overlays with the same version as the base JSON are parsed. Otherwise an
+error is returned. For the remaining document, JSON shall refer to the combined
+JSON with all overlays applied.
+
+## Byte Ordering
+
+All integers are sent in little-endian in the wire interface.
+
+## Command Streams
+
+A command group defines a set of related commands and how their parameters are
+passed.
+
+| Group | ID  | Description | Parameters |
+|-------|-----|-------------|------------|
+| Transport | 0 | Ring/shmem management | Cast directly |
+| Top Level | 1-3 | CreateDevice, etc | Marshaled |
+| COM Call  | 255 | CreateBuffer, etc | Marshaled |
+
+In this document, we will ignore transport group commands. They will be defined
+and handled by the transport layer.
+
+Top level commands call functions exported directly by the DLLs. Each top level
+function has a user assigned ID which is defined in the overlay JSON. Top level
+functions without a user assigned ID are ignored.
+
+COM calls route on a 16-bit "interface id" carried inside cmd_type (see below).
+The interface-id space is pinned by `neptune-protocol/npt_interface_ids.json`
+(the authoritative GUID → id map).  Once an id is allocated to an interface
+it is never reused, even if the interface is later removed from the registry
+(retired entries stay in the pinning file with `"retired": true` so their
+slot is reserved forever).  This matches the protobuf field-number convention
+and lets us evolve the protocol without wire-level ambiguity.
+
+Use `tools/npt_allocate_interface_id.py <name> <guid>` to allocate a new id
+when adding an interface.  The generator refuses to produce output if the
+registry and the pinning file disagree (missing pin, rename drift, or an
+interface that maps to a retired slot).
+
+### Command header
+
+```c
+struct npt_command_header {
+   uint32_t cmd_type;       // 4 bytes: group + routing info (see encoding below)
+   uint32_t cmd_flags;      // 4 bytes (NPT_CMD_FLAG_REPLY, etc.)
+   uint64_t object_id;      // 8 bytes: target object (0 for top-level functions)
+   uint32_t cmd_size;       // 4 bytes: total command size including header
+   uint32_t reserved;       // 4 bytes: alignment padding
+};
+// Total: 24 bytes
+```
+
+### cmd_type encoding
+
+For groups 0-3 (transport + top-level functions):
+```
+Bits 31-24: group ID (0-3)
+Bits 23-16: subgroup id (transport only)
+Bits 15-0:  function ID
+```
+
+For group 255 (COM calls):
+```
+Bits 31-24: group ID (255)
+Bits 23-8:  interface_id (pinned from npt_interface_ids.json)
+Bits  7-0:  method wire index (within that interface)
+```
+
+The interface_id field is 16 bits wide, giving 65535 interface slots (0 is
+reserved for INVALID / uninitialized).  The method field is 8 bits, giving
+255 methods per interface; the largest interface today has 108 methods.  If
+the registry ever grows past these limits the wire format version must bump
+and the layout reshape.
+
+COM-call payloads start immediately after the command header with the
+marshaled input parameters — there is NO per-call UUID on the wire, because
+the pinned interface_id in cmd_type already identifies the interface
+uniquely.  The per-call GUID has been removed from the wire format; the
+host validates interface_id by table lookup against the registered IID
+range.
+
+### Parameters
+
+Immediately after the command header each argument is encoded in the order
+they appear in the "params" array.  Any parameter that is listed as "input"
+false is skipped.  The encoding rules are defined in the next section.
+
+## Reply Streams
+
+Replies follow a similar format.
+
+### Reply header
+
+```c
+struct npt_reply_header {
+   uint32_t cmd_type;       // 4 bytes: same as in command
+   uint32_t cmd_return;     // 4 bytes: return value
+};
+// Total: 8 bytes
+```
+
+The `cmd_return` field holds the HRESULT return value, or S_OK if the command
+does not have a return value. For commands that return a scalar type that fits
+in 32 bits (HRESULT, UINT, INT, BOOL, LONG, enum types, etc.), `cmd_return`
+holds the return value directly.
+
+### Non-scalar Return Values
+
+When a command returns a value larger than 4 bytes (e.g. a struct), `cmd_return`
+shall be S_OK and the return value shall be encoded immediately after the reply
+header, before any output parameters, using the same encoding rules as struct
+parameters.
+
+### Output Parameters
+
+Output parameters are encoded in the same way as input parameters (rules in the
+following section) following after the return value (if any). Any parameter that
+is listed as "output" false or lacks the "output" field shall be skipped. If
+there are no output parameters and no non-scalar return value, only the reply
+header is sent.
+
+## Encoding
+
+### Scalars
+
+When a command parameter is a fixed-width integer, it is serialized in little
+endian byte order, and is padded to 32-bit.
+
+When a command parameter is a floating-point number, it is reinterpret-casted
+to an unsigned fixed-width integer of the same width, and is serialized as an
+unsigned fixed-width integer.
+
+When a command parameter is an enum, it is casted to a `int32_t` and is
+serialized as a `int32_t`.
+
+When a command parameter is a `size_t`, it is casted to a `uint64_t` and is
+serialized as a `uint64_t`.
+
+### COM Handles
+
+When a command parameter is an object handle, dispatchable or not, a
+`uint64_t` is serialized indicating the object id.  A `NULL` object handle
+has object id 0.
+
+The handle's declared interface type is implicit in the cmd_type's
+interface_id; it is NOT carried inside the body.  For methods that accept
+a polymorphic handle (e.g. `riid`-tagged output parameters), the interface
+is identified either by a companion GUID parameter in the method signature
+(following normal struct-encoding rules) or by a pinned interface_id
+encoded as a `uint16_t` — consult the per-method generated code for the
+exact shape.
+
+### Pointers
+
+When a command parameter is a non-`void` pointer, a `uint64_t` element count
+is serialized first, indicating the number of elements that follow.  The
+values pointed to by the pointer are then serialized.  Padding to 32-bit, if
+needed, happens after all values are serialized, not after each individual
+value.
+
+A `void` pointer pointing to a blob with a known byte count is said to be a
+blob pointer.  It is serialized as a `uint8_t` pointer — the element count
+on the wire is the number of bytes.
+
+A `char` pointer is serialized as a blob pointer.  The blob consists of
+characters up to, and including, the first null character.
+
+A `wchar_t` pointer is serialized as a blob pointer with the same rules.
+
+A pointer serialization with zero count must be deserialized to `NULL`.
+
+### Fixed-Size Arrays
+
+When a command parameter is a fixed-size array, it is serialized as a pointer.
+The element count serialized must be less than or equal to the fixed size.
+
+### Structs
+
+When a command parameter is a struct, the data members of the struct are
+serialized in order, using the same rules that are applied on command
+parameters.
+
+### Unions
+
+Unions are serialized the same as structs which may lead to duplicated data.
+
+### External Handles
+
+When a command parameter is an external handle, it is serialized the same as a
+COM handle (as an object handle).
+
+### Others
+
+When a command parameter is not of a type with a serialization specified, it
+is not serializable.  This includes, but is not limited to,
+
+ - function pointers
+ - pointers to mapped memory object regions
+ - WSI handles

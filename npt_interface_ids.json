@@ -1,0 +1,766 @@
+{
+  "1": {
+    "guid": "00000000-0000-0000-c000-000000000046",
+    "name": "IUnknown"
+  },
+  "2": {
+    "guid": "aec22fb8-76f3-4639-9be0-28eb43a67a2e",
+    "name": "IDXGIObject"
+  },
+  "3": {
+    "guid": "3d3e0379-f9de-4d58-bb6c-18d62992f1a6",
+    "name": "IDXGIDeviceSubObject"
+  },
+  "4": {
+    "guid": "035f3ab4-482e-4e50-b41f-8a7f8bd8960b",
+    "name": "IDXGIResource"
+  },
+  "5": {
+    "guid": "9d8e1289-d7b3-465f-8126-250e349af85d",
+    "name": "IDXGIKeyedMutex"
+  },
+  "6": {
+    "guid": "cafcb56c-6ac3-4889-bf47-9e23bbd260ec",
+    "name": "IDXGISurface"
+  },
+  "7": {
+    "guid": "4ae63092-6327-4c1b-80ae-bfe12ea32b86",
+    "name": "IDXGISurface1"
+  },
+  "8": {
+    "guid": "2411e7e1-12ac-4ccf-bd14-9798e8534dc0",
+    "name": "IDXGIAdapter"
+  },
+  "9": {
+    "guid": "ae02eedb-c735-4690-8d52-5a8dc20213aa",
+    "name": "IDXGIOutput"
+  },
+  "10": {
+    "guid": "310d36a0-d2e7-4c0a-aa04-6a9d23b8886a",
+    "name": "IDXGISwapChain"
+  },
+  "11": {
+    "guid": "7b7166ec-21c7-44ae-b21a-c9ae321ae369",
+    "name": "IDXGIFactory"
+  },
+  "12": {
+    "guid": "54ec77fa-1377-44e6-8c32-88fd5f44c84c",
+    "name": "IDXGIDevice"
+  },
+  "13": {
+    "guid": "770aae78-f26f-4dba-a829-253c83d1b387",
+    "name": "IDXGIFactory1"
+  },
+  "14": {
+    "guid": "29038f61-3839-4626-91fd-086879011a05",
+    "name": "IDXGIAdapter1"
+  },
+  "15": {
+    "guid": "77db970f-6276-48ba-ba28-070143b4392c",
+    "name": "IDXGIDevice1"
+  },
+  "16": {
+    "guid": "ea9dbf1a-c88e-4486-854a-98aa0138f30c",
+    "name": "IDXGIDisplayControl"
+  },
+  "17": {
+    "guid": "191cfac3-a341-470d-b26e-a864f428319c",
+    "name": "IDXGIOutputDuplication"
+  },
+  "18": {
+    "guid": "aba496dd-b617-4cb8-a866-bc44d7eb1fa2",
+    "name": "IDXGISurface2"
+  },
+  "19": {
+    "guid": "30961379-4609-4a41-998e-54fe567ee0c1",
+    "name": "IDXGIResource1"
+  },
+  "20": {
+    "guid": "05008617-fbfd-4051-a790-144884b4f6a9",
+    "name": "IDXGIDevice2"
+  },
+  "21": {
+    "guid": "790a45f7-0d42-4876-983a-0a55cfe6f4aa",
+    "name": "IDXGISwapChain1"
+  },
+  "22": {
+    "guid": "50c83a1c-e072-4c48-87b0-3630fa36a6d0",
+    "name": "IDXGIFactory2"
+  },
+  "23": {
+    "guid": "0aa1ae0a-fa0e-4b84-8644-e05ff8e5acb5",
+    "name": "IDXGIAdapter2"
+  },
+  "24": {
+    "guid": "00cddea8-939b-4b83-a340-a685226666cc",
+    "name": "IDXGIOutput1"
+  },
+  "25": {
+    "guid": "6007896c-3244-4afd-bf18-a6d3beda5023",
+    "name": "IDXGIDevice3"
+  },
+  "26": {
+    "guid": "a8be2ac4-199f-4946-b331-79599fb98de7",
+    "name": "IDXGISwapChain2"
+  },
+  "27": {
+    "guid": "595e39d1-2724-4663-99b1-da969de28364",
+    "name": "IDXGIOutput2"
+  },
+  "28": {
+    "guid": "25483823-cd46-4c7d-86ca-47aa95b837bd",
+    "name": "IDXGIFactory3"
+  },
+  "29": {
+    "guid": "2633066b-4514-4c7a-8fd8-12ea98059d18",
+    "name": "IDXGIDecodeSwapChain"
+  },
+  "30": {
+    "guid": "41e7d1f2-a591-4f7b-a2e5-fa9c843e1c12",
+    "name": "IDXGIFactoryMedia"
+  },
+  "31": {
+    "guid": "dd95b90b-f05f-4f6a-bd65-25bfb264bd84",
+    "name": "IDXGISwapChainMedia"
+  },
+  "32": {
+    "guid": "8a6bb301-7e7e-41f4-a8e0-5b32f7f99b18",
+    "name": "IDXGIOutput3"
+  },
+  "33": {
+    "guid": "94d99bdb-f1f8-4ab0-b236-7da0170edab1",
+    "name": "IDXGISwapChain3"
+  },
+  "34": {
+    "guid": "dc7dca35-2196-414d-9f53-617884032a60",
+    "name": "IDXGIOutput4"
+  },
+  "35": {
+    "guid": "1bc6ea02-ef36-464f-bf0c-21ca39e5168a",
+    "name": "IDXGIFactory4"
+  },
+  "36": {
+    "guid": "645967a4-1392-4310-a798-8053ce3e93fd",
+    "name": "IDXGIAdapter3"
+  },
+  "37": {
+    "guid": "80a07424-ab52-42eb-833c-0c42fd282d98",
+    "name": "IDXGIOutput5"
+  },
+  "38": {
+    "guid": "3d585d5a-bd4a-489e-b1f4-3dbcb6452ffb",
+    "name": "IDXGISwapChain4"
+  },
+  "39": {
+    "guid": "95b4f95f-d8da-4ca4-9ee6-3b76d5968a10",
+    "name": "IDXGIDevice4"
+  },
+  "40": {
+    "guid": "7632e1f5-ee65-4dca-87fd-84cd75f8838d",
+    "name": "IDXGIFactory5"
+  },
+  "41": {
+    "guid": "3c8d99d1-4fbf-4181-a82c-af66bf7bd24e",
+    "name": "IDXGIAdapter4"
+  },
+  "42": {
+    "guid": "068346e8-aaec-4b84-add7-137f513f77a1",
+    "name": "IDXGIOutput6"
+  },
+  "43": {
+    "guid": "c1b6694f-ff09-44a9-b03c-77900a0a1d17",
+    "name": "IDXGIFactory6"
+  },
+  "44": {
+    "guid": "a4966eed-76db-44da-84c1-ee9a7afb20a8",
+    "name": "IDXGIFactory7"
+  },
+  "45": {
+    "guid": "8ba5fb08-5195-40e2-ac58-0d989c3a0102",
+    "name": "ID3D10Blob"
+  },
+  "46": {
+    "guid": "a06eb39a-50da-425b-8c31-4eecd6c270f3",
+    "name": "ID3DDestructionNotifier"
+  },
+  "47": {
+    "guid": "1841e5c8-16b0-489b-bcc8-44cfb0d5deae",
+    "name": "ID3D11DeviceChild"
+  },
+  "48": {
+    "guid": "03823efb-8d8f-4e1c-9aa2-f64bb2cbfdf1",
+    "name": "ID3D11DepthStencilState"
+  },
+  "49": {
+    "guid": "75b68faa-347d-4159-8f45-a0640f01cd9a",
+    "name": "ID3D11BlendState"
+  },
+  "50": {
+    "guid": "9bb4ab81-ab1a-4d8f-b506-fc04200b6ee7",
+    "name": "ID3D11RasterizerState"
+  },
+  "51": {
+    "guid": "dc8e63f3-d12b-4952-b47b-5e45026a862d",
+    "name": "ID3D11Resource"
+  },
+  "52": {
+    "guid": "48570b85-d1ee-4fcd-a250-eb350722b037",
+    "name": "ID3D11Buffer"
+  },
+  "53": {
+    "guid": "f8fb5c27-c6b3-4f75-a4c8-439af2ef564c",
+    "name": "ID3D11Texture1D"
+  },
+  "54": {
+    "guid": "6f15aaf2-d208-4e89-9ab4-489535d34f9c",
+    "name": "ID3D11Texture2D"
+  },
+  "55": {
+    "guid": "037e866e-f56d-4357-a8af-9dabbe6e250e",
+    "name": "ID3D11Texture3D"
+  },
+  "56": {
+    "guid": "839d1216-bb2e-412b-b7f4-a9dbebe08ed1",
+    "name": "ID3D11View"
+  },
+  "57": {
+    "guid": "b0e06fe0-8192-4e1a-b1ca-36d7414710b2",
+    "name": "ID3D11ShaderResourceView"
+  },
+  "58": {
+    "guid": "dfdba067-0b8d-4865-875b-d7b4516cc164",
+    "name": "ID3D11RenderTargetView"
+  },
+  "59": {
+    "guid": "9fdac92a-1876-48c3-afad-25b94f84a9b6",
+    "name": "ID3D11DepthStencilView"
+  },
+  "60": {
+    "guid": "28acf509-7f5c-48f6-8611-f316010a6380",
+    "name": "ID3D11UnorderedAccessView"
+  },
+  "61": {
+    "guid": "3b301d64-d678-4289-8897-22f8928b72f3",
+    "name": "ID3D11VertexShader"
+  },
+  "62": {
+    "guid": "8e5c6061-628a-4c8e-8264-bbe45cb3d5dd",
+    "name": "ID3D11HullShader"
+  },
+  "63": {
+    "guid": "f582c508-0f36-490c-9977-31eece268cfa",
+    "name": "ID3D11DomainShader"
+  },
+  "64": {
+    "guid": "38325b96-effb-4022-ba02-2e795b70275c",
+    "name": "ID3D11GeometryShader"
+  },
+  "65": {
+    "guid": "ea82e40d-51dc-4f33-93d4-db7c9125ae8c",
+    "name": "ID3D11PixelShader"
+  },
+  "66": {
+    "guid": "4f5b196e-c2bd-495e-bd01-1fded38e4969",
+    "name": "ID3D11ComputeShader"
+  },
+  "67": {
+    "guid": "e4819ddc-4cf0-4025-bd26-5de82a3e07b7",
+    "name": "ID3D11InputLayout"
+  },
+  "68": {
+    "guid": "da6fea51-564c-4487-9810-f0d0f9b4e3a5",
+    "name": "ID3D11SamplerState"
+  },
+  "69": {
+    "guid": "4b35d0cd-1e15-4258-9c98-1b1333f6dd3b",
+    "name": "ID3D11Asynchronous"
+  },
+  "70": {
+    "guid": "d6c00747-87b7-425e-b84d-44d108560afd",
+    "name": "ID3D11Query"
+  },
+  "71": {
+    "guid": "9eb576dd-9f77-4d86-81aa-8bab5fe490e2",
+    "name": "ID3D11Predicate"
+  },
+  "72": {
+    "guid": "6e8c49fb-a371-4770-b440-29086022b741",
+    "name": "ID3D11Counter"
+  },
+  "73": {
+    "guid": "a6cd7faa-b0b7-4a2f-9436-8662a65797cb",
+    "name": "ID3D11ClassInstance"
+  },
+  "74": {
+    "guid": "ddf57cba-9543-46e4-a12b-f207a0fe7fed",
+    "name": "ID3D11ClassLinkage"
+  },
+  "75": {
+    "guid": "a24bc4d1-769e-43f7-8013-98ff566c18e2",
+    "name": "ID3D11CommandList"
+  },
+  "76": {
+    "guid": "c0bfa96c-e089-44fb-8eaf-26f8796190da",
+    "name": "ID3D11DeviceContext"
+  },
+  "77": {
+    "guid": "3c9c5b51-995d-48d1-9b8d-fa5caeded65c",
+    "name": "ID3D11VideoDecoder"
+  },
+  "78": {
+    "guid": "31627037-53ab-4200-9061-05faa9ab45f9",
+    "name": "ID3D11VideoProcessorEnumerator"
+  },
+  "79": {
+    "guid": "1d7b0652-185f-41c6-85ce-0c5be3d4ae6c",
+    "name": "ID3D11VideoProcessor"
+  },
+  "80": {
+    "guid": "3015a308-dcbd-47aa-a747-192486d14d4a",
+    "name": "ID3D11AuthenticatedChannel"
+  },
+  "81": {
+    "guid": "9b32f9ad-bdcc-40a6-a39d-d5c865845720",
+    "name": "ID3D11CryptoSession"
+  },
+  "82": {
+    "guid": "c2931aea-2a85-4f20-860f-fba1fd256e18",
+    "name": "ID3D11VideoDecoderOutputView"
+  },
+  "83": {
+    "guid": "11ec5a5f-51dc-4945-ab34-6e8c21300ea5",
+    "name": "ID3D11VideoProcessorInputView"
+  },
+  "84": {
+    "guid": "a048285e-25a9-4527-bd93-d68b68c44254",
+    "name": "ID3D11VideoProcessorOutputView"
+  },
+  "85": {
+    "guid": "61f21c45-3c0e-4a74-9cea-67100d9ad5e4",
+    "name": "ID3D11VideoContext"
+  },
+  "86": {
+    "guid": "10ec4d5b-975a-4689-b9e4-d0aac30fe333",
+    "name": "ID3D11VideoDevice"
+  },
+  "87": {
+    "guid": "db6f6ddb-ac77-4e88-8253-819df9bbf140",
+    "name": "ID3D11Device"
+  },
+  "88": {
+    "guid": "cc86fabe-da55-401d-85e7-e3c9de2877e9",
+    "name": "ID3D11BlendState1"
+  },
+  "89": {
+    "guid": "1217d7a6-5039-418c-b042-9cbe256afd6e",
+    "name": "ID3D11RasterizerState1"
+  },
+  "90": {
+    "guid": "5c1e0d8a-7c23-48f9-8c59-a92958ceff11",
+    "name": "ID3DDeviceContextState"
+  },
+  "91": {
+    "guid": "bb2c6faa-b5fb-4082-8e6b-388b8cfa90e1",
+    "name": "ID3D11DeviceContext1"
+  },
+  "92": {
+    "guid": "a7f026da-a5f8-4487-a564-15e34357651e",
+    "name": "ID3D11VideoContext1"
+  },
+  "93": {
+    "guid": "29da1d51-1321-4454-804b-f5fc9f861f0f",
+    "name": "ID3D11VideoDevice1"
+  },
+  "94": {
+    "guid": "465217f2-5568-43cf-b5b9-f61d54531ca1",
+    "name": "ID3D11VideoProcessorEnumerator1"
+  },
+  "95": {
+    "guid": "a04bfb29-08ef-43d6-a49c-a9bdbdcbe686",
+    "name": "ID3D11Device1"
+  },
+  "96": {
+    "guid": "b2daad8b-03d4-4dbf-95eb-32ab4b63d0ab",
+    "name": "ID3DUserDefinedAnnotation"
+  },
+  "97": {
+    "guid": "420d5b32-b90c-4da4-bef0-359f6a24a83a",
+    "name": "ID3D11DeviceContext2"
+  },
+  "98": {
+    "guid": "9d06dffa-d1e5-4d07-83a8-1bb123f2f841",
+    "name": "ID3D11Device2"
+  },
+  "99": {
+    "guid": "51218251-1e33-4617-9ccb-4d3a4367e7bb",
+    "name": "ID3D11Texture2D1"
+  },
+  "100": {
+    "guid": "0c711683-2853-4846-9bb0-f3e60639e46a",
+    "name": "ID3D11Texture3D1"
+  },
+  "101": {
+    "guid": "6fbd02fb-209f-46c4-b059-2ed15586a6ac",
+    "name": "ID3D11RasterizerState2"
+  },
+  "102": {
+    "guid": "91308b87-9040-411d-8c67-c39253ce3802",
+    "name": "ID3D11ShaderResourceView1"
+  },
+  "103": {
+    "guid": "ffbe2e23-f011-418a-ac56-5ceed7c5b94b",
+    "name": "ID3D11RenderTargetView1"
+  },
+  "104": {
+    "guid": "7b3b6153-a886-4544-ab37-6537c8500403",
+    "name": "ID3D11UnorderedAccessView1"
+  },
+  "105": {
+    "guid": "631b4766-36dc-461d-8db6-c47e13e60916",
+    "name": "ID3D11Query1"
+  },
+  "106": {
+    "guid": "b4e3c01d-e79e-4637-91b2-510e9f4c9b8f",
+    "name": "ID3D11DeviceContext3"
+  },
+  "107": {
+    "guid": "affde9d1-1df7-4bb7-8a34-0f46251dab80",
+    "name": "ID3D11Fence"
+  },
+  "108": {
+    "guid": "917600da-f58c-4c33-98d8-3e15b390fa24",
+    "name": "ID3D11DeviceContext4"
+  },
+  "109": {
+    "guid": "a05c8c37-d2c6-4732-b3a0-9ce0b0dc9ae6",
+    "name": "ID3D11Device3"
+  },
+  "110": {
+    "guid": "8992ab71-02e6-4b8d-ba48-b056dcda42c4",
+    "name": "ID3D11Device4"
+  },
+  "111": {
+    "guid": "8ffde202-a0e7-45df-9e01-e837801b5ea0",
+    "name": "ID3D11Device5"
+  },
+  "112": {
+    "guid": "9b7e4e00-342c-4106-a19f-4f2704f689f0",
+    "name": "ID3D11Multithread"
+  },
+  "113": {
+    "guid": "c4e7374c-6243-4d1b-ae87-52b4f740e261",
+    "name": "ID3D11VideoContext2"
+  },
+  "114": {
+    "guid": "59c0cb01-35f0-4a70-8f67-87905c906a53",
+    "name": "ID3D11VideoDevice2"
+  },
+  "115": {
+    "guid": "a9e2faa0-cb39-418f-a0b7-d8aad4de672e",
+    "name": "ID3D11VideoContext3"
+  },
+  "116": {
+    "guid": "85611e73-70a9-490e-9614-a9e302777904",
+    "name": "ID3D11On12Device"
+  },
+  "117": {
+    "guid": "bdb64df4-ea2f-4c70-b861-aaab1258bb5d",
+    "name": "ID3D11On12Device1"
+  },
+  "118": {
+    "guid": "dc90f331-4740-43fa-866e-67f12cb58223",
+    "name": "ID3D11On12Device2"
+  },
+  "119": {
+    "guid": "c54a6b66-72df-4ee8-8be5-a946a1429214",
+    "name": "ID3D12RootSignature"
+  },
+  "120": {
+    "guid": "34ab647b-3cc8-46ac-841b-c0965645c046",
+    "name": "ID3D12RootSignatureDeserializer"
+  },
+  "121": {
+    "guid": "7f91ce67-090c-4bb7-b78e-ed8ff2e31da0",
+    "name": "ID3D12VersionedRootSignatureDeserializer"
+  },
+  "122": {
+    "guid": "c4fec28f-7966-4e95-9f94-f431cb56c3b8",
+    "name": "ID3D12Object"
+  },
+  "123": {
+    "guid": "905db94b-a00c-4140-9df5-2b64ca9ea357",
+    "name": "ID3D12DeviceChild"
+  },
+  "124": {
+    "guid": "63ee58fb-1268-4835-86da-f008ce62f0d6",
+    "name": "ID3D12Pageable"
+  },
+  "125": {
+    "guid": "6b3b2502-6e51-45b3-90ee-9884265e8df3",
+    "name": "ID3D12Heap"
+  },
+  "126": {
+    "guid": "696442be-a72e-4059-bc79-5b5c98040fad",
+    "name": "ID3D12Resource"
+  },
+  "127": {
+    "guid": "6102dee4-af59-4b09-b999-b44d73f09b24",
+    "name": "ID3D12CommandAllocator"
+  },
+  "128": {
+    "guid": "0a753dcf-c4d8-4b91-adf6-be5a60d95a76",
+    "name": "ID3D12Fence"
+  },
+  "129": {
+    "guid": "433685fe-e22b-4ca0-a8db-b5b4f4dd0e4a",
+    "name": "ID3D12Fence1"
+  },
+  "130": {
+    "guid": "765a30f3-f624-4c6f-a828-ace948622445",
+    "name": "ID3D12PipelineState"
+  },
+  "131": {
+    "guid": "8efb471d-616c-4f49-90f7-127bb763fa51",
+    "name": "ID3D12DescriptorHeap"
+  },
+  "132": {
+    "guid": "0d9658ae-ed45-469e-a61d-970ec583cab4",
+    "name": "ID3D12QueryHeap"
+  },
+  "133": {
+    "guid": "c36a797c-ec80-4f0a-8985-a7b2475082d1",
+    "name": "ID3D12CommandSignature"
+  },
+  "134": {
+    "guid": "7116d91c-e7e4-47ce-b8c6-ec8168f437e5",
+    "name": "ID3D12CommandList"
+  },
+  "135": {
+    "guid": "5b160d0f-ac1b-4185-8ba8-b3ae42a5a455",
+    "name": "ID3D12GraphicsCommandList"
+  },
+  "136": {
+    "guid": "553103fb-1fe7-4557-bb38-946d7d0e7ca7",
+    "name": "ID3D12GraphicsCommandList1"
+  },
+  "137": {
+    "guid": "38c3e585-ff17-412c-9150-4fc6f9d72a28",
+    "name": "ID3D12GraphicsCommandList2"
+  },
+  "138": {
+    "guid": "0ec870a6-5d7e-4c22-8cfc-5baae07616ed",
+    "name": "ID3D12CommandQueue"
+  },
+  "139": {
+    "guid": "189819f1-1db6-4b57-be54-1821339b85f7",
+    "name": "ID3D12Device"
+  },
+  "140": {
+    "guid": "c64226a8-9201-46af-b4cc-53fb9ff7414f",
+    "name": "ID3D12PipelineLibrary"
+  },
+  "141": {
+    "guid": "80eabf42-2568-4e5e-bd82-c37f86961dc3",
+    "name": "ID3D12PipelineLibrary1"
+  },
+  "142": {
+    "guid": "77acce80-638e-4e65-8895-c1f23386863e",
+    "name": "ID3D12Device1"
+  },
+  "143": {
+    "guid": "30baa41e-b15b-475c-a0bb-1af5c5b64328",
+    "name": "ID3D12Device2"
+  },
+  "144": {
+    "guid": "81dadc15-2bad-4392-93c5-101345c4aa98",
+    "name": "ID3D12Device3"
+  },
+  "145": {
+    "guid": "a1533d18-0ac1-4084-85b9-89a96116806b",
+    "name": "ID3D12ProtectedSession"
+  },
+  "146": {
+    "guid": "6cd696f4-f289-40cc-8091-5a6c0a099c3d",
+    "name": "ID3D12ProtectedResourceSession"
+  },
+  "147": {
+    "guid": "e865df17-a9ee-46f9-a463-3098315aa2e5",
+    "name": "ID3D12Device4"
+  },
+  "148": {
+    "guid": "e667af9f-cd56-4f46-83ce-032e595d70a8",
+    "name": "ID3D12LifetimeOwner"
+  },
+  "149": {
+    "guid": "f1df64b6-57fd-49cd-8807-c0eb88b45c8f",
+    "name": "ID3D12SwapChainAssistant"
+  },
+  "150": {
+    "guid": "3fd03d36-4eb1-424a-a582-494ecb8ba813",
+    "name": "ID3D12LifetimeTracker"
+  },
+  "151": {
+    "guid": "47016943-fca8-4594-93ea-af258b55346d",
+    "name": "ID3D12StateObject"
+  },
+  "152": {
+    "guid": "de5fa827-9bf9-4f26-89ff-d7f56fde3860",
+    "name": "ID3D12StateObjectProperties"
+  },
+  "153": {
+    "guid": "460caac7-1d24-446a-a184-ca67db494138",
+    "name": "ID3D12StateObjectProperties1"
+  },
+  "154": {
+    "guid": "065acf71-f863-4b89-82f4-02e4d5886757",
+    "name": "ID3D12WorkGraphProperties"
+  },
+  "155": {
+    "guid": "8b4f173b-2fea-4b80-8f58-4307191ab95d",
+    "name": "ID3D12Device5"
+  },
+  "156": {
+    "guid": "82bc481c-6b9b-4030-aedb-7ee3d1df1e63",
+    "name": "ID3D12DeviceRemovedExtendedDataSettings"
+  },
+  "157": {
+    "guid": "dbd5ae51-3317-4f0a-adf9-1d7cedcaae0b",
+    "name": "ID3D12DeviceRemovedExtendedDataSettings1"
+  },
+  "158": {
+    "guid": "61552388-01ab-4008-a436-83db189566ea",
+    "name": "ID3D12DeviceRemovedExtendedDataSettings2"
+  },
+  "159": {
+    "guid": "98931d33-5ae8-4791-aa3c-1a73a2934e71",
+    "name": "ID3D12DeviceRemovedExtendedData"
+  },
+  "160": {
+    "guid": "9727a022-cf1d-4dda-9eba-effa653fc506",
+    "name": "ID3D12DeviceRemovedExtendedData1"
+  },
+  "161": {
+    "guid": "67fc5816-e4ca-4915-bf18-42541272da54",
+    "name": "ID3D12DeviceRemovedExtendedData2"
+  },
+  "162": {
+    "guid": "c70b221b-40e4-4a17-89af-025a0727a6dc",
+    "name": "ID3D12Device6"
+  },
+  "163": {
+    "guid": "d6f12dd6-76fb-406e-8961-4296eefc0409",
+    "name": "ID3D12ProtectedResourceSession1"
+  },
+  "164": {
+    "guid": "5c014b53-68a1-4b9b-8bd1-dd6046b9358b",
+    "name": "ID3D12Device7"
+  },
+  "165": {
+    "guid": "9218e6bb-f944-4f7e-a75c-b1b2c7b701f3",
+    "name": "ID3D12Device8"
+  },
+  "166": {
+    "guid": "9d5e227a-4430-4161-88b3-3eca6bb16e19",
+    "name": "ID3D12Resource1"
+  },
+  "167": {
+    "guid": "be36ec3b-ea85-4aeb-a45a-e9d76404a495",
+    "name": "ID3D12Resource2"
+  },
+  "168": {
+    "guid": "572f7389-2168-49e3-9693-d6df5871bf6d",
+    "name": "ID3D12Heap1"
+  },
+  "169": {
+    "guid": "6fda83a7-b84c-4e38-9ac8-c7bd22016b3d",
+    "name": "ID3D12GraphicsCommandList3"
+  },
+  "170": {
+    "guid": "dbb84c27-36ce-4fc9-b801-f048c46ac570",
+    "name": "ID3D12MetaCommand"
+  },
+  "171": {
+    "guid": "8754318e-d3a9-4541-98cf-645b50dc4874",
+    "name": "ID3D12GraphicsCommandList4"
+  },
+  "172": {
+    "guid": "28e2495d-0f64-4ae4-a6ec-129255dc49a8",
+    "name": "ID3D12ShaderCacheSession"
+  },
+  "173": {
+    "guid": "4c80e962-f032-4f60-bc9e-ebc2cfa1d83c",
+    "name": "ID3D12Device9"
+  },
+  "174": {
+    "guid": "517f8718-aa66-49f9-b02b-a7ab89c06031",
+    "name": "ID3D12Device10"
+  },
+  "175": {
+    "guid": "5405c344-d457-444e-b4dd-2366e45aee39",
+    "name": "ID3D12Device11"
+  },
+  "176": {
+    "guid": "5af5c532-4c91-4cd0-b541-15a405395fc5",
+    "name": "ID3D12Device12"
+  },
+  "177": {
+    "guid": "14eecffc-4df8-40f7-a118-5c816f45695e",
+    "name": "ID3D12Device13"
+  },
+  "178": {
+    "guid": "5f6e592d-d895-44c2-8e4a-88ad4926d323",
+    "name": "ID3D12Device14"
+  },
+  "179": {
+    "guid": "bc66d368-7373-4943-8757-fc87dc79e476",
+    "name": "ID3D12VirtualizationGuestDevice"
+  },
+  "180": {
+    "guid": "7071e1f0-e84b-4b33-974f-12fa49de65c5",
+    "name": "ID3D12Tools"
+  },
+  "181": {
+    "guid": "e9eb5314-33aa-42b2-a718-d77f58b1f1c7",
+    "name": "ID3D12SDKConfiguration"
+  },
+  "182": {
+    "guid": "8aaf9303-ad25-48b9-9a57-d9c37e009d9f",
+    "name": "ID3D12SDKConfiguration1"
+  },
+  "183": {
+    "guid": "61f307d3-d34e-4e7c-8374-3ba4de23cccb",
+    "name": "ID3D12DeviceFactory"
+  },
+  "184": {
+    "guid": "78dbf87b-f766-422b-a61c-c8c446bdb9ad",
+    "name": "ID3D12DeviceConfiguration"
+  },
+  "185": {
+    "guid": "ed342442-6343-4e16-bb82-a3a577874e56",
+    "name": "ID3D12DeviceConfiguration1"
+  },
+  "186": {
+    "guid": "55050859-4024-474c-87f5-6472eaee44ea",
+    "name": "ID3D12GraphicsCommandList5"
+  },
+  "187": {
+    "guid": "c3827890-e548-4cfa-96cf-5689a9370f80",
+    "name": "ID3D12GraphicsCommandList6"
+  },
+  "188": {
+    "guid": "dd171223-8b61-4769-90e3-160ccde4e2c1",
+    "name": "ID3D12GraphicsCommandList7"
+  },
+  "189": {
+    "guid": "ee936ef9-599d-4d28-938e-23c4ad05ce51",
+    "name": "ID3D12GraphicsCommandList8"
+  },
+  "190": {
+    "guid": "34ed2808-ffe6-4c2b-b11a-cabd2b0c59e1",
+    "name": "ID3D12GraphicsCommandList9"
+  },
+  "191": {
+    "guid": "7013c015-d161-4b63-a08c-238552dd8acc",
+    "name": "ID3D12GraphicsCommandList10"
+  }
+}

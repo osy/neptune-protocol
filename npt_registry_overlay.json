@@ -1,0 +1,186 @@
+{
+  "version": 1,
+  "types": [
+    {"name": "DWORD", "primitive": "uint32_t"},
+    {"name": "int", "primitive": "int32_t"},
+    {"name": "LONG_PTR", "primitive": "int64_t"},
+    {"name": "SIZE", "primitive": "struct", "fields": [
+      {"name": "cx", "type": "LONG"},
+      {"name": "cy", "type": "LONG"}
+    ]},
+    {"name": "UINT", "primitive": "uint32_t"},
+    {"name": "UINT8", "primitive": "uint8_t"},
+    {"name": "UINT16", "primitive": "uint16_t"},
+    {"name": "UINT32", "primitive": "uint32_t"},
+    {"name": "UINT64", "primitive": "uint64_t"},
+    {"name": "INT", "primitive": "int32_t"},
+    {"name": "INT8", "primitive": "int8_t"},
+    {"name": "INT16", "primitive": "int16_t"},
+    {"name": "INT32", "primitive": "int32_t"},
+    {"name": "INT64", "primitive": "int64_t"},
+    {"name": "BYTE", "primitive": "uint8_t"},
+    {"name": "FLOAT", "primitive": "float"},
+    {"name": "DOUBLE", "primitive": "double"},
+    {"name": "BOOL", "primitive": "int32_t"},
+    {"name": "HRESULT", "primitive": "int32_t"},
+    {"name": "SHORT", "primitive": "int16_t"},
+    {"name": "USHORT", "primitive": "uint16_t"},
+    {"name": "ULONG", "primitive": "uint32_t"},
+    {"name": "LONG", "primitive": "int32_t"},
+    {"name": "LONGLONG", "primitive": "int64_t"},
+    {"name": "ULONGLONG", "primitive": "uint64_t"},
+    {"name": "LARGE_INTEGER", "primitive": "int64_t"},
+    {"name": "SIZE_T", "primitive": "uint64_t"},
+    {"name": "UCHAR", "primitive": "uint8_t"},
+    {"name": "CHAR", "primitive": "int8_t"},
+    {"name": "WCHAR", "primitive": "uint16_t"},
+    {"name": "IID", "primitive": "GUID"},
+    {"name": "CLSID", "primitive": "GUID"},
+    {"name": "HANDLE", "primitive": "uint64_t"},
+    {"name": "HWND", "primitive": "uint64_t"},
+    {"name": "HMODULE", "primitive": "uint64_t"},
+    {
+      "name": "CreateDXGIFactory",
+      "primitive": "function",
+      "group": 1,
+      "id": 0
+    },
+    {
+      "name": "CreateDXGIFactory1",
+      "primitive": "function",
+      "group": 1,
+      "id": 1
+    },
+    {
+      "name": "CreateDXGIFactory2",
+      "primitive": "function",
+      "group": 1,
+      "id": 2
+    },
+    {
+      "name": "DXGIDeclareAdapterRemovalSupport",
+      "primitive": "function",
+      "group": 1,
+      "id": 3
+    },
+    {
+      "name": "D3D11CreateDevice",
+      "primitive": "function",
+      "group": 2,
+      "id": 0
+    },
+    {
+      "name": "D3D11CreateDeviceAndSwapChain",
+      "primitive": "function",
+      "group": 2,
+      "id": 1
+    },
+    {
+      "name": "D3D11On12CreateDevice",
+      "primitive": "function",
+      "group": 2,
+      "id": 2
+    },
+    {
+      "name": "D3D12CreateDevice",
+      "primitive": "function",
+      "group": 3,
+      "id": 0
+    },
+    {
+      "name": "D3D12CreateRootSignatureDeserializer",
+      "primitive": "function",
+      "group": 3,
+      "id": 1
+    },
+    {
+      "name": "D3D12CreateVersionedRootSignatureDeserializer",
+      "primitive": "function",
+      "group": 3,
+      "id": 2
+    },
+    {
+      "name": "D3D12SerializeRootSignature",
+      "primitive": "function",
+      "group": 3,
+      "id": 3
+    },
+    {
+      "name": "D3D12SerializeVersionedRootSignature",
+      "primitive": "function",
+      "group": 3,
+      "id": 4
+    },
+    {
+      "name": "D3D11_OMAC",
+      "fields": [
+        {
+          "name": "Omac",
+          "type": "BYTE",
+          "count": 16
+        }
+      ]
+    },
+    {
+      "name": "ID3D11On12Device2",
+      "methods": [
+        {
+          "name": "ReturnUnderlyingResource",
+          "params": [
+            {
+              "name": "ppFences",
+              "index": 3,
+              "handle": "com"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IDXGIOutput3",
+      "methods": [
+        {
+          "name": "CheckOverlaySupport",
+          "return": "HRESULT",
+          "params": [
+            {
+              "name": "pConcernedDevice",
+              "index": 1,
+              "output": false,
+              "input": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ID3D11Device",
+      "methods": [
+        {"name": "CreateBuffer",    "skip_default": true},
+        {"name": "CreateTexture1D", "skip_default": true},
+        {"name": "CreateTexture2D", "skip_default": true},
+        {"name": "CreateTexture3D", "skip_default": true}
+      ]
+    },
+    {
+      "name": "ID3D11DeviceContext",
+      "methods": [
+        {"name": "Map",                "skip_default": true},
+        {"name": "Unmap",              "skip_default": true},
+        {"name": "UpdateSubresource",  "skip_default": true}
+      ]
+    },
+    {
+      "name": "ID3D11DeviceContext1",
+      "methods": [
+        {"name": "UpdateSubresource1", "skip_default": true}
+      ]
+    },
+    {
+      "name": "IDXGISwapChain",
+      "methods": [
+        {"name": "Present", "skip_default": true}
+      ]
+    }
+  ]
+}

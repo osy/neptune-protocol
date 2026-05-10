@@ -1,0 +1,13 @@
+option(
+  'json',
+  type: 'string',
+  value: 'npt_registry.json',
+  description: 'Path to the Neptune protocol JSON file',
+)
+
+option(
+  'overlay',
+  type: 'string',
+  value: 'npt_registry_overlay.json',
+  description: 'Path to the Neptune protocol overlay JSON file',
+)
