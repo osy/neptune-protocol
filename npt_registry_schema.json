@@ -155,6 +155,11 @@
           "type": "boolean",
           "default": false,
           "description": "When true, the generator emits only a forward declaration of the default thunk; the consumer must provide a hand-written body."
+        },
+        "force_sync": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, the guest proxy emits a synchronous npt_call_ thunk regardless of multi_ring_enabled. Use for methods whose HRESULT carries control-flow meaning (e.g. EnumOutputs returning DXGI_ERROR_NOT_FOUND) rather than fatal-error semantics."
         }
       },
       "additionalProperties": false

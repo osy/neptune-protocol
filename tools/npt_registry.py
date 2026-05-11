@@ -173,6 +173,15 @@ class NptMethod:
     # the encoder which silently drops the un-serializable data.
     skip_default: bool = False
 
+    # Guest-proxy-only annotation: when true, the generator emits a sync
+    # (npt_call_) thunk regardless of multi_ring_enabled.  Use for methods
+    # whose HRESULT carries control-flow meaning rather than fatal-error
+    # semantics -- enumeration terminators like IDXGIAdapter::EnumOutputs
+    # signal end-of-iteration with DXGI_ERROR_NOT_FOUND, and the
+    # async/deferred-fatal optimization would mask that into a fake S_OK
+    # and make the caller loop forever.
+    force_sync: bool = False
+
 
 @dataclass
 class NptType:
@@ -432,6 +441,7 @@ def _parse_method(raw, index):
         wire_index=raw.get('index', index),
         id=raw.get('id'),
         skip_default=bool(raw.get('skip_default', False)),
+        force_sync=bool(raw.get('force_sync', False)),
     )
 
 

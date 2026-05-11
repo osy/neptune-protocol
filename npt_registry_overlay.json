@@ -181,6 +181,36 @@
       "methods": [
         {"name": "Present", "skip_default": true}
       ]
+    },
+    {
+      "name": "IDXGIAdapter",
+      "methods": [
+        {"name": "EnumOutputs", "force_sync": true}
+      ]
+    },
+    {
+      "name": "IDXGIFactory",
+      "methods": [
+        {"name": "EnumAdapters", "force_sync": true}
+      ]
+    },
+    {
+      "name": "IDXGIFactory1",
+      "methods": [
+        {"name": "EnumAdapters1", "force_sync": true}
+      ]
+    },
+    {
+      "name": "IDXGIFactory4",
+      "methods": [
+        {"name": "EnumAdapterByLuid", "force_sync": true}
+      ]
+    },
+    {
+      "name": "IDXGIFactory6",
+      "methods": [
+        {"name": "EnumAdapterByGpuPreference", "force_sync": true}
+      ]
     }
   ]
 }

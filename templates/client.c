@@ -225,7 +225,13 @@ npt_${iface_lower}_default_Release(void *self)
     # since D3D12's fan-out-heavy workload amortizes the sync cost
     # over many parallel recorders.
     has_output_com_handles = bool(out_handles)
-    always_sync = has_non_handle_output or has_sync_ret
+    # force_sync (registry annotation) is for methods whose HRESULT
+    # carries control-flow meaning rather than fatal-error semantics --
+    # e.g. enumeration terminators like EnumOutputs / EnumAdapters
+    # signal end-of-iteration with DXGI_ERROR_NOT_FOUND, and the
+    # async/deferred-fatal path would mask that into a fake S_OK and
+    # make the caller loop forever.
+    always_sync = has_non_handle_output or has_sync_ret or method.force_sync
     maybe_sync = has_output_com_handles and not always_sync
     # `needs_sync` is kept for the wrapper-build guard below: it
     # controls whether we use NPT_SUCCEEDED(_ret) vs a bare NULL check.
