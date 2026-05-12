@@ -1038,6 +1038,11 @@ class TypeRegistry:
                 if t and t.category == Category.ALIAS and \
                         t.alias_target in (STRING_TYPES | WSTRING_TYPES):
                     return True
+                # T**+count where T is a struct/union: array of N pointers,
+                # each dereferenced to one inner struct (wire = array_count
+                # + N×sizeof(T)).  Used e.g. by ppGeometryDescs.
+                if t and t.category in (Category.STRUCT, Category.UNION):
+                    return True
                 return False
             return True  # explicit size
         if self.is_string_type(field) or self.is_wstring_type(field):

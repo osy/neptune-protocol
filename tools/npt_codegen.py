@@ -616,6 +616,17 @@ class Gen:
         # Always use the input count (capacity) for sizing — the output
         # count may reference a field not yet written by the host.
         count_expr = self._get_count_expr(field, prefix)
+
+        # T**+count where T is a struct/union: array of N pointers, each
+        # dereferenced to a single inner struct.  acc[_i] is already T*,
+        # so pass it directly to npt_sizeof_<T> (no `&`).
+        if field.indirection >= 2 and count_expr is not None and not field.is_handle:
+            return [
+                f'{dst} += npt_sizeof_array_count({acc} ? {count_expr} : 0);',
+                f'for (uint32_t _i = 0; _i < ({acc} ? {count_expr} : 0); _i++)',
+                f'    {dst} += npt_sizeof_{field.type_name}({acc}[_i]);',
+            ]
+
         if count_expr is None:
             if for_output:
                 # Output simple pointer: host always allocates, so the
@@ -820,6 +831,21 @@ class Gen:
             count_expr = self._get_output_count_expr(field, prefix)
         else:
             count_expr = self._get_count_expr(field, prefix)
+
+        # T**+count where T is a struct/union: array of N pointers, each
+        # dereferenced to a single inner struct.  acc[_i] is T*; pass it
+        # directly to npt_encode_<T> (no `&`).
+        if field.indirection >= 2 and count_expr is not None and not field.is_handle:
+            return [
+                f'if ({acc}) {{',
+                f'    npt_encode_array_count(enc, {count_expr});',
+                f'    for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
+                f'        npt_encode_{field.type_name}(enc, {acc}[_i]);',
+                f'}} else {{',
+                f'    npt_encode_array_count(enc, 0);',
+                f'}}',
+            ]
+
         if count_expr is None:
             return [
                 f'if (npt_encode_simple_pointer(enc, {acc}))',
@@ -1104,6 +1130,32 @@ class Gen:
 
     def _decode_pointer(self, field, acc, prefix, alloc_temp):
         count_expr = self._get_count_expr(field, prefix)
+
+        # T**+count where T is a struct/union: allocate N inner-pointer
+        # slots, then allocate one inner struct per slot and decode into it.
+        # acc is the T** field; each acc[i] ends up as a T*.  Only the
+        # host-side (alloc_temp=True) path is supported — output T** with
+        # count doesn't occur in the registry today.
+        if field.indirection >= 2 and count_expr is not None and not field.is_handle \
+                and alloc_temp:
+            return [
+                f'if (npt_peek_array_count(dec)) {{',
+                f'    const uint64_t _count = npt_decode_array_count_unchecked(dec);',
+                f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name} *), _count);',
+                f'    if (!{acc}) return;',
+                f'    for (uint32_t _i = 0; _i < (uint32_t)_count; _i++) {{',
+                f'        {field.type_name} *_elem = npt_cs_decoder_alloc_temp(dec, sizeof({field.type_name}));',
+                f'        if (!_elem) return;',
+                f'        npt_decode_{field.type_name}(dec, _elem);',
+                f'        (({field.type_name} **){acc})[_i] = _elem;',
+                f'    }}',
+                f'}} else {{',
+                f'    (void)npt_decode_array_count_unchecked(dec); /* consume the 0 */',
+                f'    (void)({count_expr}); /* unused: count_expr from registry */',
+                f'    {acc} = NULL;',
+                f'}}',
+            ]
+
         if count_expr is None:
             # Simple pointer (no size at all) — uses presence prefix
             if alloc_temp:
@@ -1392,6 +1444,22 @@ class Gen:
                         f'if ({acc}) {{',
                         f'    for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
                         f'        npt_replace_{field.type_name}_handle(ctx, &(({field.type_name} *){acc})[_i]);',
+                        f'}}',
+                    ]
+            return []
+
+        # Array of pointers to structs that might contain handles
+        # (T**+count, e.g. D3D12_GENERIC_PROGRAM_DESC.ppSubobjects).
+        # acc[_i] is already T*, so pass it directly to npt_replace_<T>_handle.
+        if field.indirection >= 2 and field.count is not None and not field.is_handle \
+                and (field.is_struct or field.is_union):
+            if self._type_might_contain_handle(field.type_ref):
+                count_expr = self._get_count_expr(field, prefix)
+                if count_expr:
+                    return [
+                        f'if ({acc}) {{',
+                        f'    for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
+                        f'        npt_replace_{field.type_name}_handle(ctx, ({field.type_name} *){acc}[_i]);',
                         f'}}',
                     ]
             return []
