@@ -69,9 +69,20 @@ def _find_match(base_arr, ov_elem):
     return None
 
 
+# NOTE: _find_match / _merge_objects / _merge_typed_array / merge_overlay
+# are duplicated in tools/npt_registry.py — keep them in sync.
 def _merge_objects(base_obj, ov_obj):
     for key, ov_val in ov_obj.items():
         if key == 'index':
+            continue
+        base_val = base_obj.get(key)
+        # Deep-merge nested type definitions (e.g. anonymous inline union/
+        # struct on a struct field): the overlay names just the changed
+        # members, the base keeps `primitive`, untouched fields, etc.
+        if (key == 'type'
+                and isinstance(ov_val, dict)
+                and isinstance(base_val, dict)):
+            _merge_objects(base_val, ov_val)
             continue
         if key in base_obj and key in _TYPED_ARRAY_KEYS and isinstance(ov_val, list):
             _merge_typed_array(base_obj[key], ov_val)
