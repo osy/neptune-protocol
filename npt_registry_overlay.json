@@ -784,6 +784,13 @@
     },
 
     {
+      "name": "D3D12_NODE_CPU_INPUT",
+      "fields": [
+        {"name": "pRecords", "count": "NumRecords * RecordStrideInBytes"}
+      ]
+    },
+
+    {
       "name": "D3D12_STATE_SUBOBJECT",
       "fields": [
         {
