@@ -1313,14 +1313,20 @@ class Gen:
             return '\n'.join(p for p in
                              (self.replace_handle_field(f, prefix, indent)
                               for f in inner) if p)
+        lines = self._replace_handle_field_impl(field, prefix)
+        return self._wrap_condition(field, lines, prefix, indent)
 
+    def _replace_handle_field_impl(self, field: NptField, prefix: str) -> list:
+        """Return raw (un-indented) lines for the handle-replace pass on a
+        single named field.  ``replace_handle_field`` wraps the result with
+        ``_wrap_condition`` so per-arm overlay conditions gate execution the
+        same way they do for sizeof/encode/decode."""
         acc = self._acc(field, prefix)
-        ind = '    ' * indent
 
         # COM handle field — replace raw object ID with real pointer
         if field.is_com_handle:
             if field.indirection == 2 and field.output:
-                return ''  # output handles don't need replacement
+                return []  # output handles don't need replacement
             obj_type = self._object_type_for_field(field)
             if field.indirection == 2 and field.input and field.count is not None:
                 # Input array of COM handles (e.g. ppRenderTargetViews):
@@ -1328,51 +1334,53 @@ class Gen:
                 # array with raw object ids cast to void*.
                 count_expr = self._get_count_expr(field, prefix)
                 if count_expr:
-                    return (f'{ind}if ({acc}) {{\n'
-                            f'{ind}    for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)\n'
-                            f'{ind}        {acc}[_i] = npt_cs_handle_lookup(ctx,\n'
-                            f'{ind}            (npt_object_id)(uintptr_t){acc}[_i], {obj_type});\n'
-                            f'{ind}}}')
-                return ''
+                    return [
+                        f'if ({acc}) {{',
+                        f'    for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
+                        f'        {acc}[_i] = npt_cs_handle_lookup(ctx,',
+                        f'            (npt_object_id)(uintptr_t){acc}[_i], {obj_type});',
+                        f'}}',
+                    ]
+                return []
             if field.indirection >= 1:
                 # Pointer field: decode stored npt_object_id in the pointer
-                return f'{ind}{acc} = npt_cs_handle_lookup(ctx, ' \
-                       f'(npt_object_id)(uintptr_t){acc}, {obj_type});'
-            else:
-                # Value field: the uint64_t IS the object ID
-                return f'{ind}{acc} = (uintptr_t)npt_cs_handle_lookup(ctx, ' \
-                       f'(npt_object_id){acc}, {obj_type});'
+                return [f'{acc} = npt_cs_handle_lookup(ctx, '
+                        f'(npt_object_id)(uintptr_t){acc}, {obj_type});']
+            # Value field: the uint64_t IS the object ID
+            return [f'{acc} = (uintptr_t)npt_cs_handle_lookup(ctx, '
+                    f'(npt_object_id){acc}, {obj_type});']
 
         # Win32 handle field
         if field.is_win32_handle:
             if field.output and not field.input:
-                return ''  # output-only handles don't need replacement
+                return []  # output-only handles don't need replacement
             if field.indirection >= 1:
-                return f'{ind}{acc} = npt_win32_handle_replace(ctx, ' \
-                       f'(npt_object_id)(uintptr_t){acc});'
-            else:
-                return f'{ind}{acc} = ({field.type_name})(uintptr_t)npt_win32_handle_replace(ctx, ' \
-                       f'(npt_object_id){acc});'
+                return [f'{acc} = npt_win32_handle_replace(ctx, '
+                        f'(npt_object_id)(uintptr_t){acc});']
+            return [f'{acc} = ({field.type_name})(uintptr_t)npt_win32_handle_replace(ctx, '
+                    f'(npt_object_id){acc});']
 
         # Interface ref without explicit handle annotation
         if field.indirection >= 1 and self.reg.is_interface_type(field.type_name):
             obj_type = f'NPT_OBJECT_TYPE_{field.type_name.upper()}'
-            return f'{ind}{acc} = npt_cs_handle_lookup(ctx, ' \
-                   f'(npt_object_id)(uintptr_t){acc}, {obj_type});'
+            return [f'{acc} = npt_cs_handle_lookup(ctx, '
+                    f'(npt_object_id)(uintptr_t){acc}, {obj_type});']
 
         # Struct/union value that might contain handles — recurse
         if field.indirection == 0 and (field.is_struct or field.is_union):
             if self._type_might_contain_handle(field.type_ref):
-                return f'{ind}npt_replace_{field.type_name}_handle(ctx, &{acc});'
-            return ''
+                return [f'npt_replace_{field.type_name}_handle(ctx, &{acc});']
+            return []
 
         # Pointer to struct that might contain handles
         if field.indirection == 1 and field.count is None and \
                 (field.is_struct or field.is_union):
             if self._type_might_contain_handle(field.type_ref):
-                return (f'{ind}if ({acc})\n'
-                        f'{ind}    npt_replace_{field.type_name}_handle(ctx, ({field.type_name} *){acc});')
-            return ''
+                return [
+                    f'if ({acc})',
+                    f'    npt_replace_{field.type_name}_handle(ctx, ({field.type_name} *){acc});',
+                ]
+            return []
 
         # Array of structs that might contain handles
         if field.indirection == 1 and field.count is not None and \
@@ -1380,22 +1388,26 @@ class Gen:
             if self._type_might_contain_handle(field.type_ref):
                 count_expr = self._get_count_expr(field, prefix)
                 if count_expr:
-                    return (f'{ind}if ({acc}) {{\n'
-                            f'{ind}    for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)\n'
-                            f'{ind}        npt_replace_{field.type_name}_handle(ctx, &(({field.type_name} *){acc})[_i]);\n'
-                            f'{ind}}}')
-            return ''
+                    return [
+                        f'if ({acc}) {{',
+                        f'    for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
+                        f'        npt_replace_{field.type_name}_handle(ctx, &(({field.type_name} *){acc})[_i]);',
+                        f'}}',
+                    ]
+            return []
 
         # Fixed-size embedded array of structs with handles
         if field.indirection == 0 and field.is_fixed_array and \
                 (field.is_struct or field.is_union):
             if self._type_might_contain_handle(field.type_ref):
                 count_expr = self._get_count_expr(field, prefix)
-                return (f'{ind}for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)\n'
-                        f'{ind}    npt_replace_{field.type_name}_handle(ctx, &{acc}[_i]);')
-            return ''
+                return [
+                    f'for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
+                    f'    npt_replace_{field.type_name}_handle(ctx, &{acc}[_i]);',
+                ]
+            return []
 
-        return ''
+        return []
 
     def register_output_handle_field(self, field: NptField, prefix: str,
                                      indent: int = 1,
