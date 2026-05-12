@@ -86,15 +86,18 @@ def _collect_struct_deps(ntype, out, seen, anon_names=None):
     """Recursively collect struct/union dependencies in order."""
     if ntype.name in seen:
         return
-    if anon_names and ntype.name in anon_names:
-        return
     if ntype.name in BUILTIN_STRUCT_NAMES:
         return  # hand-written in npt_cs_helpers.h
     seen.add(ntype.name)
     for field in ntype.fields:
         if field.type_ref and field.type_ref.category in (Category.STRUCT, Category.UNION):
             _collect_struct_deps(field.type_ref, out, seen, anon_names)
-    out.append(ntype)
+    # Skip appending anon types that are flattened into their parent's
+    # emission — but their inner-field struct deps still need to be
+    # walked above, otherwise a newly-added union arm pointing at
+    # struct X won't pull X into the ordering before the parent.
+    if not (anon_names and ntype.name in anon_names):
+        out.append(ntype)
 
 
 def collect_struct_types(registry):

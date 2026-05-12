@@ -16,6 +16,18 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wpointer-arith"
 
+/* Forward declarations: structs with mutual recursion (e.g.
+ * D3D12_STATE_SUBOBJECT ↔ D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION via the
+ * tagged-union overlay) need every helper visible before any body emits. */
+% for ty in STRUCT_TYPES:
+static inline size_t npt_sizeof_${ty.name}(const ${ty.name} *val);
+static inline void npt_encode_${ty.name}(struct npt_cs_encoder *enc, const ${ty.name} *val);
+static inline void npt_decode_${ty.name}(struct npt_cs_decoder *dec, ${ty.name} *val);
+% if IS_HOST and GEN.type_needs_replace_handle(ty):
+static inline void npt_replace_${ty.name}_handle(struct npt_dispatch_context *ctx, ${ty.name} *val);
+% endif
+% endfor
+
 % for ty in STRUCT_TYPES:
 <% GEN.set_context(ty.name) %>\
 <%
