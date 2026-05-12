@@ -781,6 +781,53 @@
       "fields": [
         {"name": "Value", "condition": false}
       ]
+    },
+
+    {
+      "name": "D3D12_STATE_SUBOBJECT",
+      "fields": [
+        {
+          "index": 1,
+          "name": null,
+          "indirection": 0,
+          "const": false,
+          "type": {
+            "primitive": "union",
+            "fields": [
+              {"name": "pDesc",                              "type": "void",                                       "indirection": 1, "const": true, "condition": false},
+              {"name": "pStateObjectConfig",                 "type": "D3D12_STATE_OBJECT_CONFIG",                  "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_STATE_OBJECT_CONFIG"},
+              {"name": "pGlobalRootSignature",               "type": "D3D12_GLOBAL_ROOT_SIGNATURE",                "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE"},
+              {"name": "pLocalRootSignature",                "type": "D3D12_LOCAL_ROOT_SIGNATURE",                 "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE"},
+              {"name": "pNodeMask",                          "type": "D3D12_NODE_MASK",                            "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_NODE_MASK"},
+              {"name": "pDxilLibrary",                       "type": "D3D12_DXIL_LIBRARY_DESC",                    "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY"},
+              {"name": "pExistingCollection",                "type": "D3D12_EXISTING_COLLECTION_DESC",             "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_EXISTING_COLLECTION"},
+              {"name": "pSubobjectToExportsAssociation",     "type": "D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION",     "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION"},
+              {"name": "pDxilSubobjectToExportsAssociation", "type": "D3D12_DXIL_SUBOBJECT_TO_EXPORTS_ASSOCIATION","indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_DXIL_SUBOBJECT_TO_EXPORTS_ASSOCIATION"},
+              {"name": "pRaytracingShaderConfig",            "type": "D3D12_RAYTRACING_SHADER_CONFIG",             "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG"},
+              {"name": "pRaytracingPipelineConfig",          "type": "D3D12_RAYTRACING_PIPELINE_CONFIG",           "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG"},
+              {"name": "pHitGroup",                          "type": "D3D12_HIT_GROUP_DESC",                       "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_HIT_GROUP"},
+              {"name": "pRaytracingPipelineConfig1",         "type": "D3D12_RAYTRACING_PIPELINE_CONFIG1",          "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG1"},
+              {"name": "pWorkGraph",                         "type": "D3D12_WORK_GRAPH_DESC",                      "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_WORK_GRAPH"},
+              {"name": "pStreamOutput",                      "type": "D3D12_STREAM_OUTPUT_DESC",                   "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_STREAM_OUTPUT"},
+              {"name": "pBlend",                             "type": "D3D12_BLEND_DESC",                           "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_BLEND"},
+              {"name": "pSampleMask",                        "type": "UINT",                                       "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_SAMPLE_MASK"},
+              {"name": "pRasterizer",                        "type": "D3D12_RASTERIZER_DESC",                      "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_RASTERIZER"},
+              {"name": "pDepthStencil",                      "type": "D3D12_DEPTH_STENCIL_DESC",                   "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL"},
+              {"name": "pInputLayout",                       "type": "D3D12_INPUT_LAYOUT_DESC",                    "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_INPUT_LAYOUT"},
+              {"name": "pIBStripCutValue",                   "type": "D3D12_INDEX_BUFFER_STRIP_CUT_VALUE",         "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_IB_STRIP_CUT_VALUE"},
+              {"name": "pPrimitiveTopology",                 "type": "D3D12_PRIMITIVE_TOPOLOGY_TYPE",              "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY"},
+              {"name": "pRenderTargetFormats",               "type": "D3D12_RT_FORMAT_ARRAY",                      "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS"},
+              {"name": "pDepthStencilFormat",                "type": "DXGI_FORMAT",                                "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT"},
+              {"name": "pSampleDesc",                        "type": "DXGI_SAMPLE_DESC",                           "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_SAMPLE_DESC"},
+              {"name": "pFlags",                             "type": "D3D12_PIPELINE_STATE_FLAGS",                 "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_FLAGS"},
+              {"name": "pDepthStencil1",                     "type": "D3D12_DEPTH_STENCIL_DESC1",                  "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL1"},
+              {"name": "pViewInstancing",                    "type": "D3D12_VIEW_INSTANCING_DESC",                 "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_VIEW_INSTANCING"},
+              {"name": "pGenericProgram",                    "type": "D3D12_GENERIC_PROGRAM_DESC",                 "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_GENERIC_PROGRAM"},
+              {"name": "pDepthStencil2",                     "type": "D3D12_DEPTH_STENCIL_DESC2",                  "indirection": 1, "const": true, "condition": "self.Type == D3D12_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL2"}
+            ]
+          }
+        }
+      ]
     }
   ]
 }
