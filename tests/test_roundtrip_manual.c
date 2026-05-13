@@ -906,6 +906,210 @@ static int test_manual_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA(void)
 }
 
 /* ================================================================== */
+/* Output-arg allocation tests (dispatcher decode -> reply encode)    */
+/* ================================================================== */
+/*
+ * Cover the integration boundary the auto-generated roundtrip tests miss:
+ * npt_decode_*_args_temp must allocate temp storage for every output-only
+ * param so the reply encoder reads valid memory after the original D3D
+ * call returns.  Each test builds a CMD wire, decodes it, asserts every
+ * output arg points at decoder-owned storage, and drives the reply
+ * encoder where it is sized.
+ */
+
+static int test_manual_dispatch_OMGetBlendState(void)
+{
+    /* CMD body: 1 uint64 guest_id for the output ppBlendState */
+    uint8_t cmd_buf[64] = {0};
+    struct npt_cs_encoder enc = npt_test_encoder_init(cmd_buf, sizeof(cmd_buf));
+    uint64_t fake_gid = 0xdeadbeefcafef00dULL;
+    npt_encode_uint64_t(&enc, &fake_gid);
+    size_t cmd_size = npt_test_encoder_written(&enc, cmd_buf);
+
+    struct npt_cs_decoder dec = npt_test_decoder_init(cmd_buf, cmd_size);
+    struct npt_command_ID3D11DeviceContext_OMGetBlendState args = {0};
+    npt_decode_ID3D11DeviceContext_OMGetBlendState_args_temp(&dec, &args);
+
+    if (!args.ppBlendState || !args.BlendFactor || !args.pSampleMask) {
+        fprintf(stderr, "FAIL: OMGetBlendState output args not all allocated "
+                "(ppBlendState=%p BlendFactor=%p pSampleMask=%p)\n",
+                (void *)args.ppBlendState, (void *)args.BlendFactor,
+                (void *)args.pSampleMask);
+        npt_test_cleanup(&dec);
+        return -1;
+    }
+    if (args._guest_id_ppBlendState != fake_gid) {
+        fprintf(stderr, "FAIL: OMGetBlendState guest_id not preserved\n");
+        npt_test_cleanup(&dec);
+        return -1;
+    }
+
+    /* Simulate dispatch filling the outputs, then drive the reply encoder. */
+    args.BlendFactor[0] = 1.0f; args.BlendFactor[1] = 0.5f;
+    args.BlendFactor[2] = 0.25f; args.BlendFactor[3] = 0.0f;
+    *args.pSampleMask = 0xffffffffu;
+    *args.ppBlendState = (ID3D11BlendState *)(uintptr_t)0xcafeULL;
+
+    uint8_t reply_buf[128] = {0};
+    struct npt_cs_encoder renc = npt_test_encoder_init(reply_buf, sizeof(reply_buf));
+    npt_encode_ID3D11DeviceContext_OMGetBlendState_reply(&renc, &args);
+    size_t reply_size = npt_test_encoder_written(&renc, reply_buf);
+
+    /* reply header (16) + array_count(8) + 4*FLOAT(16) + simple_pointer(8) + UINT(4) */
+    const size_t expected = sizeof(struct npt_reply_header) + 8 + 16 + 8 + 4;
+    int result = (reply_size == expected) ? 0 : -1;
+    if (result) {
+        fprintf(stderr, "FAIL: OMGetBlendState reply size %zu != %zu\n",
+                reply_size, expected);
+    }
+    npt_test_cleanup(&dec);
+    return result;
+}
+
+static int test_manual_dispatch_GetDecoderBuffer(void)
+{
+    /* CMD body: uint64 pDecoder id + int32 Type enum */
+    uint8_t cmd_buf[64] = {0};
+    struct npt_cs_encoder enc = npt_test_encoder_init(cmd_buf, sizeof(cmd_buf));
+    uint64_t fake_decoder = 0x1122334455667788ULL;
+    npt_encode_uint64_t(&enc, &fake_decoder);
+    int32_t buf_type = 0; /* D3D11_VIDEO_DECODER_BUFFER_PICTURE_PARAMETERS */
+    npt_encode_int32_t(&enc, &buf_type);
+    size_t cmd_size = npt_test_encoder_written(&enc, cmd_buf);
+
+    struct npt_cs_decoder dec = npt_test_decoder_init(cmd_buf, cmd_size);
+    struct npt_command_ID3D11VideoContext_GetDecoderBuffer args = {0};
+    npt_decode_ID3D11VideoContext_GetDecoderBuffer_args_temp(&dec, &args);
+
+    if (!args.pBufferSize || !args.ppBuffer) {
+        fprintf(stderr, "FAIL: GetDecoderBuffer output args not all allocated "
+                "(pBufferSize=%p ppBuffer=%p)\n",
+                (void *)args.pBufferSize, (void *)args.ppBuffer);
+        npt_test_cleanup(&dec);
+        return -1;
+    }
+
+    /* *args.ppBuffer is NULL after alloc; reply encoder skips the data
+     * loop in that case (count = *pBufferSize is also 0 from memset), so
+     * encoding should produce a header + simple_pointer + UINT + count(0). */
+    *args.pBufferSize = 0;
+    uint8_t reply_buf[128] = {0};
+    struct npt_cs_encoder renc = npt_test_encoder_init(reply_buf, sizeof(reply_buf));
+    npt_encode_ID3D11VideoContext_GetDecoderBuffer_reply(&renc, &args);
+    int result = (npt_test_encoder_written(&renc, reply_buf) > 0) ? 0 : -1;
+    npt_test_cleanup(&dec);
+    return result;
+}
+
+static int test_manual_dispatch_Map(void)
+{
+    /* CMD body: UINT Subresource + simple_pointer(=0) for pReadRange */
+    uint8_t cmd_buf[64] = {0};
+    struct npt_cs_encoder enc = npt_test_encoder_init(cmd_buf, sizeof(cmd_buf));
+    UINT subresource = 0;
+    npt_encode_UINT(&enc, &subresource);
+    (void)npt_encode_simple_pointer(&enc, NULL); /* pReadRange = NULL */
+    size_t cmd_size = npt_test_encoder_written(&enc, cmd_buf);
+
+    struct npt_cs_decoder dec = npt_test_decoder_init(cmd_buf, cmd_size);
+    struct npt_command_ID3D12Resource_Map args = {0};
+    npt_decode_ID3D12Resource_Map_args_temp(&dec, &args);
+
+    if (!args.ppData) {
+        fprintf(stderr, "FAIL: Map ppData not allocated\n");
+        npt_test_cleanup(&dec);
+        return -1;
+    }
+
+    /* Simulate Map filling *ppData with a buffer address and exercise the
+     * reply encoder (NULL-guarded simple_pointer + void*-as-uint64). */
+    *args.ppData = (void *)(uintptr_t)0xfeedfaceULL;
+    uint8_t reply_buf[64] = {0};
+    struct npt_cs_encoder renc = npt_test_encoder_init(reply_buf, sizeof(reply_buf));
+    npt_encode_ID3D12Resource_Map_reply(&renc, &args);
+    int result = (npt_test_encoder_written(&renc, reply_buf) > 0) ? 0 : -1;
+    npt_test_cleanup(&dec);
+    return result;
+}
+
+static int test_manual_dispatch_GetRootSignatureDescAtVersion(void)
+{
+    /* CMD body: int32 convertToVersion enum */
+    uint8_t cmd_buf[32] = {0};
+    struct npt_cs_encoder enc = npt_test_encoder_init(cmd_buf, sizeof(cmd_buf));
+    int32_t version = 1; /* D3D_ROOT_SIGNATURE_VERSION_1 */
+    npt_encode_int32_t(&enc, &version);
+    size_t cmd_size = npt_test_encoder_written(&enc, cmd_buf);
+
+    struct npt_cs_decoder dec = npt_test_decoder_init(cmd_buf, cmd_size);
+    struct npt_command_ID3D12VersionedRootSignatureDeserializer_GetRootSignatureDescAtVersion args = {0};
+    npt_decode_ID3D12VersionedRootSignatureDeserializer_GetRootSignatureDescAtVersion_args_temp(
+        &dec, &args);
+
+    int result = args.ppDesc ? 0 : -1;
+    if (result) {
+        fprintf(stderr, "FAIL: GetRootSignatureDescAtVersion ppDesc not allocated\n");
+    }
+    /* Reply encoder is "unsized fatal" by design (encoder cannot serialize
+     * a nested D3D12_VERSIONED_ROOT_SIGNATURE_DESC**); the dispatcher fix
+     * only guarantees the dispatch decode path no longer hands a NULL
+     * ppDesc to the original D3D12 call.  Don't drive the reply encoder. */
+    npt_test_cleanup(&dec);
+    return result;
+}
+
+/* Helper: build a CMD body shared by both root-signature-deserializer
+ * top-level functions (same param shape).  Empty blob (count=0), zero
+ * size, present IID with a recognisable pattern. */
+static size_t build_root_sig_deserializer_cmd(uint8_t *buf, size_t buf_size)
+{
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, buf_size);
+    npt_encode_array_count(&enc, 0); /* pSrcData blob: empty */
+    uint64_t srcSize = 0;
+    npt_encode_uint64_t(&enc, &srcSize); /* SrcDataSizeInBytes */
+    (void)npt_encode_simple_pointer(&enc, (const void *)1); /* IID present */
+    IID iid; memset(&iid, 0xAB, sizeof(iid));
+    npt_encode_IID(&enc, &iid);
+    return npt_test_encoder_written(&enc, buf);
+}
+
+static int test_manual_dispatch_D3D12CreateRootSignatureDeserializer(void)
+{
+    uint8_t cmd_buf[64] = {0};
+    size_t cmd_size = build_root_sig_deserializer_cmd(cmd_buf, sizeof(cmd_buf));
+
+    struct npt_cs_decoder dec = npt_test_decoder_init(cmd_buf, cmd_size);
+    struct npt_command_D3D12CreateRootSignatureDeserializer args = {0};
+    npt_decode_D3D12CreateRootSignatureDeserializer_args_temp(&dec, &args);
+
+    int result = args.ppRootSignatureDeserializer ? 0 : -1;
+    if (result) {
+        fprintf(stderr, "FAIL: D3D12CreateRootSignatureDeserializer "
+                "ppRootSignatureDeserializer not allocated\n");
+    }
+    npt_test_cleanup(&dec);
+    return result;
+}
+
+static int test_manual_dispatch_D3D12CreateVersionedRootSignatureDeserializer(void)
+{
+    uint8_t cmd_buf[64] = {0};
+    size_t cmd_size = build_root_sig_deserializer_cmd(cmd_buf, sizeof(cmd_buf));
+
+    struct npt_cs_decoder dec = npt_test_decoder_init(cmd_buf, cmd_size);
+    struct npt_command_D3D12CreateVersionedRootSignatureDeserializer args = {0};
+    npt_decode_D3D12CreateVersionedRootSignatureDeserializer_args_temp(&dec, &args);
+
+    int result = args.ppRootSignatureDeserializer ? 0 : -1;
+    if (result) {
+        fprintf(stderr, "FAIL: D3D12CreateVersionedRootSignatureDeserializer "
+                "ppRootSignatureDeserializer not allocated\n");
+    }
+    npt_test_cleanup(&dec);
+    return result;
+}
+
+/* ================================================================== */
 /* Dispatch table                                                     */
 /* ================================================================== */
 
@@ -953,28 +1157,52 @@ static const struct manual_test_entry manual_tests[] = {
       test_manual_D3D12_RENDER_PASS_ENDING_ACCESS_Resolve },
     { "D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA",
       test_manual_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA },
+    { "dispatch ID3D11DeviceContext::OMGetBlendState",
+      test_manual_dispatch_OMGetBlendState },
+    { "dispatch ID3D11VideoContext::GetDecoderBuffer",
+      test_manual_dispatch_GetDecoderBuffer },
+    { "dispatch ID3D12Resource::Map",
+      test_manual_dispatch_Map },
+    { "dispatch ID3D12VersionedRootSignatureDeserializer::GetRootSignatureDescAtVersion",
+      test_manual_dispatch_GetRootSignatureDescAtVersion },
+    { "dispatch D3D12CreateRootSignatureDeserializer",
+      test_manual_dispatch_D3D12CreateRootSignatureDeserializer },
+    { "dispatch D3D12CreateVersionedRootSignatureDeserializer",
+      test_manual_dispatch_D3D12CreateVersionedRootSignatureDeserializer },
 };
 
 #define MANUAL_TEST_COUNT \
     (int)(sizeof(manual_tests) / sizeof(manual_tests[0]))
 
+/* Guest-side manual tests live in test_roundtrip_manual_guest.c because the
+ * host and guest protocol headers define same-named static inline functions
+ * and cannot share a translation unit (see tests/meson.build).  We chain
+ * them in here so the runner sees a single contiguous list. */
+extern int npt_guest_manual_test_count(void);
+extern int npt_guest_manual_test_run(int index);
+extern const char *npt_guest_manual_test_name(int index);
+
 int manual_test_count(void)
 {
-    return MANUAL_TEST_COUNT;
+    return MANUAL_TEST_COUNT + npt_guest_manual_test_count();
 }
 
 int run_manual_test(int index)
 {
-    if (index < 0 || index >= MANUAL_TEST_COUNT)
+    if (index < 0)
         return -1;
-    return manual_tests[index].func();
+    if (index < MANUAL_TEST_COUNT)
+        return manual_tests[index].func();
+    return npt_guest_manual_test_run(index - MANUAL_TEST_COUNT);
 }
 
 const char *manual_test_name(int index)
 {
-    if (index < 0 || index >= MANUAL_TEST_COUNT)
+    if (index < 0)
         return "(invalid)";
-    return manual_tests[index].name;
+    if (index < MANUAL_TEST_COUNT)
+        return manual_tests[index].name;
+    return npt_guest_manual_test_name(index - MANUAL_TEST_COUNT);
 }
 
 #pragma GCC diagnostic pop

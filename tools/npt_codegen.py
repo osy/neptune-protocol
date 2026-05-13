@@ -305,8 +305,49 @@ class Gen:
                     f'wrapper built on client thunk; not in reply) */')
         if not field.output:
             return f'/* skip {prefix}{field.name} (input only) */'
+        # Indirection-0 fixed array param: caller supplies the buffer; the
+        # helper handles the IDL-optional NULL-buffer case with a scratch
+        # fallback so the wire stays aligned.
+        if field.indirection == 0 and field.is_fixed_array:
+            return self._decode_output_fixed_array(field, prefix)
         return self.decode_field(field, prefix, alloc_temp=False,
                                  inline_storage=False)
+
+    def _decode_output_fixed_array(self, field, prefix):
+        acc = self._acc(field, prefix)
+        count_expr = self._get_count_expr(field, prefix)
+        base = self.reg.resolve_alias_chain(field.type_name)
+        is_prim = base in PRIMITIVE_NAMES or field.is_enum
+        if not field.optional:
+            if is_prim:
+                return '\n'.join([
+                    f'    (void)npt_decode_array_count(dec, {count_expr});',
+                    f'    npt_decode_{field.type_name}_array(dec, ({field.type_name} *){acc}, {count_expr});',
+                ])
+            return '\n'.join([
+                f'    (void)npt_decode_array_count(dec, {count_expr});',
+                f'    for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
+                f'        npt_decode_{field.type_name}(dec, &{acc}[_i]);',
+            ])
+        if is_prim:
+            decode_call = (f'npt_decode_{field.type_name}_array(dec, _buf, '
+                           f'{count_expr})')
+        else:
+            decode_call = (
+                f'for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)\n'
+                f'            npt_decode_{field.type_name}(dec, &_buf[_i])'
+            )
+        return '\n'.join([
+            f'    (void)npt_decode_array_count(dec, {count_expr});',
+            f'    {{',
+            f'        {field.type_name} *_buf = ({field.type_name} *){acc};',
+            f'        if (!_buf)',
+            f'            _buf = npt_cs_decoder_alloc_temp_array(dec, '
+            f'sizeof({field.type_name}), ({count_expr}));',
+            f'        if (_buf)',
+            f'            {decode_call};',
+            f'    }}',
+        ])
 
     # ------------------------------------------------------------------
     # Type name helpers
@@ -664,6 +705,12 @@ class Gen:
 
         if base in PRIMITIVE_NAMES or field.is_enum:
             if fixed:
+                if field.optional:
+                    return [
+                        f'{dst} += npt_sizeof_array_count({acc} ? {count_expr} : 0);',
+                        f'if ({acc})',
+                        f'    {dst} += npt_sizeof_{field.type_name}_array((const {field.type_name} *){acc}, {count_expr});',
+                    ]
                 return [
                     f'{dst} += npt_sizeof_array_count({count_expr});',
                     f'{dst} += npt_sizeof_{field.type_name}_array((const {field.type_name} *){acc}, {count_expr});',
@@ -675,6 +722,12 @@ class Gen:
             ]
         else:
             if fixed:
+                if field.optional:
+                    return [
+                        f'{dst} += npt_sizeof_array_count({acc} ? {count_expr} : 0);',
+                        f'for (uint32_t _i = 0; _i < ({acc} ? (uint32_t)({count_expr}) : 0); _i++)',
+                        f'    {dst} += npt_sizeof_{field.type_name}(&{acc}[_i]);',
+                    ]
                 return [
                     f'{dst} += npt_sizeof_array_count({count_expr});',
                     f'for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
@@ -867,6 +920,15 @@ class Gen:
 
         if base in PRIMITIVE_NAMES or field.is_enum:
             if fixed:
+                if field.optional:
+                    return [
+                        f'if ({acc}) {{',
+                        f'    npt_encode_array_count(enc, {count_expr});',
+                        f'    npt_encode_{field.type_name}_array(enc, (const {field.type_name} *){acc}, {count_expr});',
+                        f'}} else {{',
+                        f'    npt_encode_array_count(enc, 0);',
+                        f'}}',
+                    ]
                 return [
                     f'npt_encode_array_count(enc, {count_expr});',
                     f'npt_encode_{field.type_name}_array(enc, (const {field.type_name} *){acc}, {count_expr});',
@@ -881,6 +943,16 @@ class Gen:
             ]
         else:
             if fixed:
+                if field.optional:
+                    return [
+                        f'if ({acc}) {{',
+                        f'    npt_encode_array_count(enc, {count_expr});',
+                        f'    for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
+                        f'        npt_encode_{field.type_name}(enc, &{acc}[_i]);',
+                        f'}} else {{',
+                        f'    npt_encode_array_count(enc, 0);',
+                        f'}}',
+                    ]
                 return [
                     f'npt_encode_array_count(enc, {count_expr});',
                     f'for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
@@ -1260,11 +1332,28 @@ class Gen:
         """
         count_expr = self._get_count_expr(field, prefix)
         base = self.reg.resolve_alias_chain(field.type_name)
+        # Optional input fixed arrays carry count=N+data or count=0 (caller
+        # passed NULL).  Only command params, never embedded struct fields.
+        optional_input = field.optional and not inline_storage
         if base in PRIMITIVE_NAMES or field.is_enum:
             if inline_storage:
                 return [
                     f'(void)npt_decode_array_count(dec, {count_expr});',
                     f'npt_decode_{field.type_name}_array(dec, ({field.type_name} *){acc}, {count_expr});',
+                ]
+            if optional_input:
+                return [
+                    f'{{',
+                    f'    const uint64_t _count = npt_decode_array_count_unchecked(dec);',
+                    f'    if (_count) {{',
+                    f'        if (_count != ({count_expr})) {{ npt_cs_decoder_set_fatal(dec); return; }}',
+                    f'        {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name}), ({count_expr}));',
+                    f'        if (!{acc}) return;',
+                    f'        npt_decode_{field.type_name}_array(dec, ({field.type_name} *){acc}, {count_expr});',
+                    f'    }} else {{',
+                    f'        {acc} = NULL;',
+                    f'    }}',
+                    f'}}',
                 ]
             return [
                 f'(void)npt_decode_array_count(dec, {count_expr});',
@@ -1278,6 +1367,21 @@ class Gen:
                     f'(void)npt_decode_array_count(dec, {count_expr});',
                     f'for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
                     f'    npt_decode_{field.type_name}(dec, ({field.type_name} *)&{acc}[_i]);',
+                ]
+            if optional_input:
+                return [
+                    f'{{',
+                    f'    const uint64_t _count = npt_decode_array_count_unchecked(dec);',
+                    f'    if (_count) {{',
+                    f'        if (_count != ({count_expr})) {{ npt_cs_decoder_set_fatal(dec); return; }}',
+                    f'        {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name}), ({count_expr}));',
+                    f'        if (!{acc}) return;',
+                    f'        for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
+                    f'            npt_decode_{field.type_name}(dec, ({field.type_name} *)&{acc}[_i]);',
+                    f'    }} else {{',
+                    f'        {acc} = NULL;',
+                    f'    }}',
+                    f'}}',
                 ]
             return [
                 f'(void)npt_decode_array_count(dec, {count_expr});',
@@ -1333,6 +1437,26 @@ class Gen:
                 f'{ind}{acc} = npt_cs_decoder_alloc_temp(dec, sizeof({field.type_name}));',
                 f'{ind}if (!{acc}) return;',
                 f'{ind}memset({acc}, 0, sizeof({field.type_name}));',
+            ])
+        # Fixed-size output array: c_type bumps indirection to 1 in the args
+        # struct, so the field is a NULL pointer at decode time.  The reply
+        # encoder reads `count` elements unconditionally — back it with temp
+        # storage before the original is called.
+        if field.indirection == 0 and field.is_fixed_array and field.output:
+            count_expr = self._get_count_expr(field, prefix)
+            return '\n'.join([
+                f'{ind}{acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name}), {count_expr});',
+                f'{ind}if (!{acc}) return;',
+                f'{ind}memset({acc}, 0, sizeof({field.type_name}) * ({count_expr}));',
+            ])
+        # Output T** that isn't a COM handle: the original writes `*acc =
+        # <ptr>`, so allocate one pointer slot.  A count (when present)
+        # describes the data behind the slot, not the slot itself.
+        if field.indirection == 2 and field.output:
+            return '\n'.join([
+                f'{ind}{acc} = npt_cs_decoder_alloc_temp(dec, sizeof(void *));',
+                f'{ind}if (!{acc}) return;',
+                f'{ind}*{acc} = NULL;',
             ])
         return f'{ind}/* skip {prefix}{field.name} (output only, no alloc needed) */'
 

@@ -50,6 +50,7 @@ test_roundtrip_host_lib = static_library(
 test_roundtrip_guest_lib = static_library(
   'test_roundtrip_guest',
   npt_testgen[0],  # test_roundtrip_guest.c
+  'test_roundtrip_manual_guest.c',
   npt_testgen[3],  # npt_test_ids.h (header dep)
   npt_protocol_guest,
   npt_protocol_host,  # for npt_protocol_defs.h

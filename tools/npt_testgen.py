@@ -746,10 +746,6 @@ def should_skip_method(reg, method):
                 return True, f"return type {ret_type}: {reason}"
     for p in method.params:
         cls = classify_field(reg, p)
-        # Optional fixed-array output params have complex for_output encoding
-        # that the guest verify cannot correctly replicate
-        if cls == 'FIXED_ARRAY' and p.output and p.optional:
-            return True, f"param '{p.name}' is optional fixed-array output"
         if cls == 'NON_SERIALIZABLE' and not p.optional:
             return True, f"param '{p.name}' is non-serializable"
         if cls == 'UNSIZED' and not p.optional:
