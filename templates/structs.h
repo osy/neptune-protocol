@@ -20,7 +20,7 @@
  * D3D12_STATE_SUBOBJECT ↔ D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION via the
  * tagged-union overlay) need every helper visible before any body emits. */
 % for ty in STRUCT_TYPES:
-static inline size_t npt_sizeof_${ty.name}(const ${ty.name} *val);
+static inline size_t npt_sizeof_${ty.name}(const ${ty.name} *val, int max_mode);
 static inline void npt_encode_${ty.name}(struct npt_cs_encoder *enc, const ${ty.name} *val);
 static inline void npt_decode_${ty.name}(struct npt_cs_decoder *dec, ${ty.name} *val);
 % if IS_HOST and GEN.type_needs_replace_handle(ty):
@@ -36,16 +36,10 @@ static inline void npt_replace_${ty.name}_handle(struct npt_dispatch_context *ct
 /* ${ty.name} (${'union' if ty.category.name == 'UNION' else 'struct'}) */
 
 static inline size_t
-npt_sizeof_${ty.name}(const ${ty.name} *val)
+npt_sizeof_${ty.name}(const ${ty.name} *val, int max_mode)
 {
     size_t size = 0;
-% for item in processed:
-% if isinstance(item, tuple):
-${GEN.sizeof_bitfield(item[1], 'val->', 'size')}
-% else:
-${GEN.sizeof_field(item, 'val->', 'size')}
-% endif
-% endfor
+${GEN.sizeof_struct_body(ty, processed, 'val->', 'size')}\
     return size;
 }
 

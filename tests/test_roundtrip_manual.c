@@ -80,7 +80,7 @@ static int test_manual_D3D11_AUTHENTICATED_PROTECTION_FLAGS_Value(void)
     /* Set Value; Flags bitfields alias the same memory. */
     orig.Value = npt_test_rand(&seed) & 0xFFu;
 
-    size_t w1_size = npt_sizeof_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&orig);
+    size_t w1_size = npt_sizeof_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&enc1, &orig);
@@ -91,7 +91,7 @@ static int test_manual_D3D11_AUTHENTICATED_PROTECTION_FLAGS_Value(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&decoded);
+    size_t w2_size = npt_sizeof_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&enc2, &decoded);
@@ -113,7 +113,7 @@ static int test_manual_D3D11_AUTHENTICATED_PROTECTION_FLAGS_Flags(void)
     orig.Flags.OverlayOrFullscreenRequired = 1;
     orig.Flags.Reserved = 42;
 
-    size_t w1_size = npt_sizeof_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&orig);
+    size_t w1_size = npt_sizeof_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&enc1, &orig);
@@ -124,7 +124,7 @@ static int test_manual_D3D11_AUTHENTICATED_PROTECTION_FLAGS_Flags(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&decoded);
+    size_t w2_size = npt_sizeof_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D11_AUTHENTICATED_PROTECTION_FLAGS(&enc2, &decoded);
@@ -160,7 +160,7 @@ static int test_manual_D3D12_RESOURCE_BARRIER_Transition(void)
     orig.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
     orig.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
 
-    size_t w1_size = npt_sizeof_D3D12_RESOURCE_BARRIER(&orig);
+    size_t w1_size = npt_sizeof_D3D12_RESOURCE_BARRIER(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_RESOURCE_BARRIER(&enc1, &orig);
@@ -171,7 +171,7 @@ static int test_manual_D3D12_RESOURCE_BARRIER_Transition(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_RESOURCE_BARRIER(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_RESOURCE_BARRIER(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_RESOURCE_BARRIER(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_RESOURCE_BARRIER(&enc2, &decoded);
@@ -194,7 +194,7 @@ static int test_manual_D3D12_RESOURCE_BARRIER_Aliasing(void)
     orig.Aliasing.pResourceBefore = npt_test_handle_create(&seed);
     orig.Aliasing.pResourceAfter = npt_test_handle_create(&seed);
 
-    size_t w1_size = npt_sizeof_D3D12_RESOURCE_BARRIER(&orig);
+    size_t w1_size = npt_sizeof_D3D12_RESOURCE_BARRIER(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_RESOURCE_BARRIER(&enc1, &orig);
@@ -205,7 +205,7 @@ static int test_manual_D3D12_RESOURCE_BARRIER_Aliasing(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_RESOURCE_BARRIER(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_RESOURCE_BARRIER(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_RESOURCE_BARRIER(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_RESOURCE_BARRIER(&enc2, &decoded);
@@ -227,7 +227,7 @@ static int test_manual_D3D12_RESOURCE_BARRIER_UAV(void)
     orig.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
     orig.UAV.pResource = npt_test_handle_create(&seed);
 
-    size_t w1_size = npt_sizeof_D3D12_RESOURCE_BARRIER(&orig);
+    size_t w1_size = npt_sizeof_D3D12_RESOURCE_BARRIER(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_RESOURCE_BARRIER(&enc1, &orig);
@@ -238,7 +238,7 @@ static int test_manual_D3D12_RESOURCE_BARRIER_UAV(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_RESOURCE_BARRIER(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_RESOURCE_BARRIER(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_RESOURCE_BARRIER(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_RESOURCE_BARRIER(&enc2, &decoded);
@@ -285,7 +285,7 @@ static int test_manual_D3D12_ROOT_PARAMETER_Constants(void)
     D3D12_ROOT_PARAMETER orig;
     init_root_param_constants(&orig, &seed);
 
-    size_t w1_size = npt_sizeof_D3D12_ROOT_PARAMETER(&orig);
+    size_t w1_size = npt_sizeof_D3D12_ROOT_PARAMETER(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_ROOT_PARAMETER(&enc1, &orig);
@@ -296,7 +296,7 @@ static int test_manual_D3D12_ROOT_PARAMETER_Constants(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_ROOT_PARAMETER(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_ROOT_PARAMETER(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_ROOT_PARAMETER(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_ROOT_PARAMETER(&enc2, &decoded);
@@ -324,7 +324,7 @@ static int test_manual_D3D12_ROOT_PARAMETER_DescriptorTable(void)
     orig.DescriptorTable.NumDescriptorRanges = 1;
     orig.DescriptorTable.pDescriptorRanges = ranges;
 
-    size_t w1_size = npt_sizeof_D3D12_ROOT_PARAMETER(&orig);
+    size_t w1_size = npt_sizeof_D3D12_ROOT_PARAMETER(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_ROOT_PARAMETER(&enc1, &orig);
@@ -335,7 +335,7 @@ static int test_manual_D3D12_ROOT_PARAMETER_DescriptorTable(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_ROOT_PARAMETER(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_ROOT_PARAMETER(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_ROOT_PARAMETER(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_ROOT_PARAMETER(&enc2, &decoded);
@@ -370,7 +370,7 @@ static int test_manual_D3D12_ROOT_PARAMETER1_Constants(void)
     D3D12_ROOT_PARAMETER1 orig;
     init_root_param1_constants(&orig, &seed);
 
-    size_t w1_size = npt_sizeof_D3D12_ROOT_PARAMETER1(&orig);
+    size_t w1_size = npt_sizeof_D3D12_ROOT_PARAMETER1(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_ROOT_PARAMETER1(&enc1, &orig);
@@ -381,7 +381,7 @@ static int test_manual_D3D12_ROOT_PARAMETER1_Constants(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_ROOT_PARAMETER1(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_ROOT_PARAMETER1(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_ROOT_PARAMETER1(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_ROOT_PARAMETER1(&enc2, &decoded);
@@ -417,7 +417,7 @@ static int test_manual_D3D12_ROOT_SIGNATURE_DESC(void)
     orig.pStaticSamplers = NULL;
     orig.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
-    size_t w1_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC(&orig);
+    size_t w1_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_ROOT_SIGNATURE_DESC(&enc1, &orig);
@@ -428,7 +428,7 @@ static int test_manual_D3D12_ROOT_SIGNATURE_DESC(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_ROOT_SIGNATURE_DESC(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_ROOT_SIGNATURE_DESC(&enc2, &decoded);
@@ -460,7 +460,7 @@ static int test_manual_D3D12_ROOT_SIGNATURE_DESC1(void)
     orig.pStaticSamplers = NULL;
     orig.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
-    size_t w1_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC1(&orig);
+    size_t w1_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC1(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_ROOT_SIGNATURE_DESC1(&enc1, &orig);
@@ -471,7 +471,7 @@ static int test_manual_D3D12_ROOT_SIGNATURE_DESC1(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_ROOT_SIGNATURE_DESC1(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC1(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC1(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_ROOT_SIGNATURE_DESC1(&enc2, &decoded);
@@ -503,7 +503,7 @@ static int test_manual_D3D12_ROOT_SIGNATURE_DESC2(void)
     orig.pStaticSamplers = NULL;
     orig.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
-    size_t w1_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC2(&orig);
+    size_t w1_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC2(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_ROOT_SIGNATURE_DESC2(&enc1, &orig);
@@ -514,7 +514,7 @@ static int test_manual_D3D12_ROOT_SIGNATURE_DESC2(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_ROOT_SIGNATURE_DESC2(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC2(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC2(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_ROOT_SIGNATURE_DESC2(&enc2, &decoded);
@@ -579,7 +579,7 @@ static int test_manual_D3D12_VERSIONED_ROOT_SIGNATURE_DESC_1_0(void)
     orig.Desc_1_0.pStaticSamplers = NULL;
     orig.Desc_1_0.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
-    size_t w1_size = npt_sizeof_D3D12_VERSIONED_ROOT_SIGNATURE_DESC(&orig);
+    size_t w1_size = npt_sizeof_D3D12_VERSIONED_ROOT_SIGNATURE_DESC(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_VERSIONED_ROOT_SIGNATURE_DESC(&enc1, &orig);
@@ -590,7 +590,7 @@ static int test_manual_D3D12_VERSIONED_ROOT_SIGNATURE_DESC_1_0(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_VERSIONED_ROOT_SIGNATURE_DESC(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_VERSIONED_ROOT_SIGNATURE_DESC(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_VERSIONED_ROOT_SIGNATURE_DESC(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_VERSIONED_ROOT_SIGNATURE_DESC(&enc2, &decoded);
@@ -636,7 +636,7 @@ static int test_manual_D3D12_BARRIER_GROUP_Global(void)
     gb->AccessAfter = D3D12_BARRIER_ACCESS_COMMON;
     orig.pGlobalBarriers = gb;
 
-    size_t w1_size = npt_sizeof_D3D12_BARRIER_GROUP(&orig);
+    size_t w1_size = npt_sizeof_D3D12_BARRIER_GROUP(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_BARRIER_GROUP(&enc1, &orig);
@@ -682,7 +682,7 @@ static int test_manual_D3D12_BARRIER_GROUP_Texture(void)
     tb->Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
     orig.pTextureBarriers = tb;
 
-    size_t w1_size = npt_sizeof_D3D12_BARRIER_GROUP(&orig);
+    size_t w1_size = npt_sizeof_D3D12_BARRIER_GROUP(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_BARRIER_GROUP(&enc1, &orig);
@@ -736,7 +736,7 @@ static int test_manual_D3D12_BARRIER_GROUP_Buffer(void)
     bb->Size = 256;
     orig.pBufferBarriers = bb;
 
-    size_t w1_size = npt_sizeof_D3D12_BARRIER_GROUP(&orig);
+    size_t w1_size = npt_sizeof_D3D12_BARRIER_GROUP(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_BARRIER_GROUP(&enc1, &orig);
@@ -787,7 +787,7 @@ static int test_manual_D3D12_RENDER_PASS_ENDING_ACCESS_Preserve(void)
     orig.PreserveLocal.AdditionalWidth = 640;
     orig.PreserveLocal.AdditionalHeight = 480;
 
-    size_t w1_size = npt_sizeof_D3D12_RENDER_PASS_ENDING_ACCESS(&orig);
+    size_t w1_size = npt_sizeof_D3D12_RENDER_PASS_ENDING_ACCESS(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_RENDER_PASS_ENDING_ACCESS(&enc1, &orig);
@@ -798,7 +798,7 @@ static int test_manual_D3D12_RENDER_PASS_ENDING_ACCESS_Preserve(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_RENDER_PASS_ENDING_ACCESS(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_RENDER_PASS_ENDING_ACCESS(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_RENDER_PASS_ENDING_ACCESS(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_RENDER_PASS_ENDING_ACCESS(&enc2, &decoded);
@@ -831,7 +831,7 @@ static int test_manual_D3D12_RENDER_PASS_ENDING_ACCESS_Resolve(void)
     orig.Resolve.ResolveMode = D3D12_RESOLVE_MODE_AVERAGE;
     orig.Resolve.PreserveResolveSource = 0;
 
-    size_t w1_size = npt_sizeof_D3D12_RENDER_PASS_ENDING_ACCESS(&orig);
+    size_t w1_size = npt_sizeof_D3D12_RENDER_PASS_ENDING_ACCESS(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_RENDER_PASS_ENDING_ACCESS(&enc1, &orig);
@@ -842,7 +842,7 @@ static int test_manual_D3D12_RENDER_PASS_ENDING_ACCESS_Resolve(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_RENDER_PASS_ENDING_ACCESS(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_RENDER_PASS_ENDING_ACCESS(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_RENDER_PASS_ENDING_ACCESS(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_RENDER_PASS_ENDING_ACCESS(&enc2, &decoded);
@@ -880,7 +880,7 @@ static int test_manual_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA(void)
      * the NULL case without crashing. Deeper testing would require
      * hand-building linked lists of D3D12_AUTO_BREADCRUMB_NODE. */
 
-    size_t w1_size = npt_sizeof_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA(&orig);
+    size_t w1_size = npt_sizeof_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA(&orig, 0);
     uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
     struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
     npt_encode_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA(&enc1, &orig);
@@ -891,7 +891,7 @@ static int test_manual_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA(void)
     struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
     npt_decode_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA(&dec, &decoded);
 
-    size_t w2_size = npt_sizeof_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA(&decoded);
+    size_t w2_size = npt_sizeof_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA(&decoded, 0);
     uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
     struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
     npt_encode_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA(&enc2, &decoded);
@@ -1110,6 +1110,57 @@ static int test_manual_dispatch_D3D12CreateVersionedRootSignatureDeserializer(vo
 }
 
 /* ================================================================== */
+/* Unsupported-reply gating                                           */
+/* ================================================================== */
+
+/*
+ * Unsupported-reply gating: methods whose reply contains a type with
+ * runtime-unbounded wire size (DRED chain pointers, root-signature
+ * parameter arrays, ...) cannot fit in a pre-reserved fixed-size reply
+ * slot.  The host's `npt_encode_..._reply` is generated as a fatal-flag
+ * stub that writes nothing; the guest sees a zero reply header and
+ * takes the documented-default branch in `npt_decode_..._reply`.
+ *
+ * Verify the host stub writes zero bytes (no header) for a DRED
+ * method.  The complementary guest-side mismatch behaviour is covered
+ * by `test_guest_unsupported_reply_DRED_decode` in
+ * test_roundtrip_manual_guest.c.
+ *
+ * The reply-size *upper-bound* invariant (across every reply type with
+ * a working reply path) is covered by the meta-test
+ * `test_guest_reply_size_upper_bound_meta` on the guest side, since
+ * `npt_sizeof_..._reply` is a guest-side helper.
+ */
+static int test_manual_reply_unsupported_encode_DRED(void)
+{
+    D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT output;
+    memset(&output, 0, sizeof(output));
+    struct npt_command_ID3D12DeviceRemovedExtendedData_GetAutoBreadcrumbsOutput args = {0};
+    args.pOutput = &output;
+    args.ret = (HRESULT)0;
+
+    uint8_t reply_buf[64];
+    memset(reply_buf, 0xCC, sizeof(reply_buf));
+    struct npt_cs_encoder renc = npt_test_encoder_init(reply_buf, sizeof(reply_buf));
+    npt_encode_ID3D12DeviceRemovedExtendedData_GetAutoBreadcrumbsOutput_reply(
+        &renc, &args);
+    size_t actual = npt_test_encoder_written(&renc, reply_buf);
+
+    if (actual != 0) {
+        fprintf(stderr, "FAIL: DRED GetAutoBreadcrumbsOutput unsupported "
+                "encode_reply wrote %zu bytes; expected 0 (fatal stub)\n",
+                actual);
+        return -1;
+    }
+    if (reply_buf[0] != 0xCC) {
+        fprintf(stderr, "FAIL: DRED reply buffer modified despite fatal "
+                "stub (first byte=0x%02x, expected 0xCC)\n", reply_buf[0]);
+        return -1;
+    }
+    return 0;
+}
+
+/* ================================================================== */
 /* Dispatch table                                                     */
 /* ================================================================== */
 
@@ -1169,6 +1220,8 @@ static const struct manual_test_entry manual_tests[] = {
       test_manual_dispatch_D3D12CreateRootSignatureDeserializer },
     { "dispatch D3D12CreateVersionedRootSignatureDeserializer",
       test_manual_dispatch_D3D12CreateVersionedRootSignatureDeserializer },
+    { "reply unsupported DRED encode writes nothing",
+      test_manual_reply_unsupported_encode_DRED },
 };
 
 #define MANUAL_TEST_COUNT \

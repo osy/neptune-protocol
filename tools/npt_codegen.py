@@ -48,6 +48,8 @@ class Gen:
         self.is_host = is_host
         self.is_guest = not is_host
         self._context = ''  # current struct/method name for warnings
+        # Dedup for `_warn_unsupported`: (method_name, type_name, where).
+        self._unsupported_seen: set = set()
 
     def set_context(self, ctx: str):
         """Set the current context (struct/method name) for warning messages."""
@@ -98,13 +100,87 @@ class Gen:
 
         When ``for_output`` is True (reply sizing), simple pointers are
         assumed non-NULL because the host always allocates output storage.
+
+        Anonymous unions (typically discriminator-tagged variants inside
+        a struct, e.g. the inner union of ``D3D11_SHADER_RESOURCE_VIEW_DESC``)
+        emit a runtime branch on the enclosing function's ``max_mode``
+        parameter: in normal mode, walk each arm gated by its condition;
+        in max-mode, take ``max`` over all arms regardless of the
+        discriminator.  This lets reply sizing call
+        ``npt_sizeof_T(NULL, 1)`` and get a sound upper bound for any
+        active variant.
         """
         inner = self._anonymous_inner_fields(field)
         if inner is not None:
+            if field.type_ref.category == Category.UNION:
+                return self._sizeof_anon_union(inner, prefix, dst, indent,
+                                               for_output)
             return '\n'.join(self.sizeof_field(f, prefix, dst, indent,
                                                for_output) for f in inner)
         lines = self._sizeof_field_impl(field, prefix, dst, for_output)
         return self._wrap_condition(field, lines, prefix, indent)
+
+    def _emit_max_mode_branches(self, items, prefix, dst, indent, for_output):
+        """Emit an `if (max_mode) {max-of-arms} else {conditional-sum}`
+        block for a list of fields that share memory (a top-level union,
+        or an anonymous union inside a struct).
+
+        Each arm is summed into a fresh local in max-mode (without its
+        ``condition`` wrap) so the running max captures the largest
+        variant; the normal-mode branch keeps the conditional wraps so
+        only the active arm contributes."""
+        ind = '    ' * indent
+        lines = [f'{ind}if (max_mode) {{',
+                 f'{ind}    size_t _arm_max = 0;']
+        for item in items:
+            if isinstance(item, tuple):
+                lines.append(
+                    f'{ind}    {{ size_t _arm = 4; /* bitfield {item[1]} */ '
+                    f'if (_arm > _arm_max) _arm_max = _arm; }}')
+                continue
+            arm_lines = self._sizeof_field_impl(item, prefix, '_arm',
+                                                for_output)
+            lines.append(f'{ind}    {{ size_t _arm = 0;')
+            for line in arm_lines:
+                lines.append(f'{ind}        {line}')
+            lines.append(f'{ind}        if (_arm > _arm_max) _arm_max = _arm; }}')
+        lines.append(f'{ind}    {dst} += _arm_max;')
+        lines.append(f'{ind}}} else {{')
+        for item in items:
+            if isinstance(item, tuple):
+                lines.append(self.sizeof_bitfield(item[1], prefix, dst,
+                                                  indent=indent + 1))
+            else:
+                lines.append(self.sizeof_field(item, prefix, dst,
+                                                indent=indent + 1,
+                                                for_output=for_output))
+        lines.append(f'{ind}}}')
+        return '\n'.join(lines)
+
+    def _sizeof_anon_union(self, inner_fields, prefix, dst, indent,
+                           for_output):
+        return self._emit_max_mode_branches(inner_fields, prefix, dst,
+                                            indent, for_output)
+
+    def sizeof_struct_body(self, ty, processed, prefix, dst, indent=1):
+        """Emit the body (between `size_t size = 0;` and `return size;`)
+        of a per-type ``npt_sizeof_T`` function.
+
+        Top-level unions go through the max-mode dispatch directly.
+        Plain structs sum fields; any anonymous union inside picks up
+        the same dispatch via ``_sizeof_anon_union``."""
+        if ty.category == Category.UNION:
+            return self._emit_max_mode_branches(processed, prefix, dst,
+                                                 indent, False) + '\n'
+        lines = []
+        for item in processed:
+            if isinstance(item, tuple):
+                lines.append(self.sizeof_bitfield(item[1], prefix, dst,
+                                                   indent=indent))
+            else:
+                lines.append(self.sizeof_field(item, prefix, dst,
+                                                indent=indent))
+        return '\n'.join(lines) + '\n'
 
     def encode_field(self, field: NptField, prefix: str,
                      indent: int = 1, for_output: bool = False) -> str:
@@ -400,6 +476,96 @@ class Gen:
         return ret_type if self.has_return(ret_type) else 'void'
 
     # ------------------------------------------------------------------
+    # Reply-payload sizing (used by templates and `_sizeof_pointer`)
+    # ------------------------------------------------------------------
+
+    def reply_payload_size_expr(self, type_name):
+        """C expression for an upper bound on the packed wire size of a
+        single serialised value of ``type_name``, used to reserve reply-
+        buffer space before the host has filled the data.
+
+        Returns a string containing the C expression.  Returns ``'0'``
+        for types whose wire size is runtime-unbounded
+        (`TypeRegistry.is_dynamic_wire_size`); the template caller is
+        expected to gate the surrounding reply path on
+        `method_reply_is_unsupported` so the 0-byte estimate does not
+        lead to a runtime overflow.
+
+        For statically-bounded types this calls the per-type sizing
+        helper with ``max_mode = 1`` and a zero-initialised dummy
+        value.  In max-mode the helper takes ``max`` over every
+        discriminator-conditional union arm instead of walking the
+        active arm, and the dummy value is never read — so the
+        returned size is a sound upper bound for any value the host
+        might encode.  All helpers in this chain are ``static inline``
+        and constant-foldable, so the C compiler reduces the
+        expression to a literal at the call site.
+        """
+        if not type_name:
+            return '0'
+        if self.reg.is_dynamic_wire_size(type_name):
+            return '0'
+        if type_name == 'void':
+            # void has no compound-literal form; the helper ignores its
+            # value argument anyway (always returns the uint64 host-id
+            # wire size used for void** outputs).
+            return 'npt_sizeof_void(NULL, 1)'
+        # Same emit for primitive / enum / alias / struct / union — the
+        # per-type helper signature is uniform.
+        return f'npt_sizeof_{type_name}(&(const {type_name}){{0}}, 1)'
+
+    def method_reply_is_unsupported(self, method_or_func):
+        """True iff this method/function's reply contains a type whose
+        wire size is unbounded at codegen time.
+
+        When True, the templates emit stubs for `npt_sizeof_..._reply`
+        (just `sizeof(reply_header)`) and `npt_encode_..._reply`
+        (`npt_cs_encoder_set_fatal(enc); return;`).  The guest's existing
+        reply-header mismatch path then surfaces the failure to the
+        caller without overflowing the fixed-size reply slot.
+
+        Used by `templates/commands.h` to gate both the method and
+        function reply paths.
+        """
+        ret = getattr(method_or_func, 'return_type', None)
+        if ret and self.has_return(ret) and not self.is_scalar_return(ret):
+            if self.reg.is_dynamic_wire_size(ret):
+                self._warn_unsupported(method_or_func, ret, 'return type')
+                return True
+        for p in getattr(method_or_func, 'params', []) or []:
+            if not p.output:
+                continue
+            if self.is_output_com_handle(p):
+                continue
+            # Blobs (void* with byte count) and strings have runtime
+            # length but the count is already known to the sizing pass,
+            # so they're not "unsupported" — only typed payloads whose
+            # struct content is dynamic.
+            if p.is_blob:
+                continue
+            if (self.reg.is_string_type(p) or self.reg.is_wstring_type(p)):
+                continue
+            if not p.type_name:
+                continue
+            if self.reg.is_dynamic_wire_size(p.type_name):
+                self._warn_unsupported(method_or_func, p.type_name,
+                                       f'output param {p.name!r}')
+                return True
+        return False
+
+    def _warn_unsupported(self, method_or_func, type_name, where):
+        """Emit a one-line codegen warning for an unsupported reply."""
+        name = getattr(method_or_func, 'name', '<anon>')
+        key = (name, type_name, where)
+        if key in self._unsupported_seen:
+            return
+        self._unsupported_seen.add(key)
+        self.reg.warn(
+            f"{name}: reply not supported — {where} is "
+            f"'{type_name}' which has unbounded wire size; the guest "
+            f"call will return a fatal-mismatch default")
+
+    # ------------------------------------------------------------------
     # Internal: field classification
     # ------------------------------------------------------------------
 
@@ -606,8 +772,8 @@ class Gen:
     def _sizeof_value(self, field, acc, dst):
         """Sizeof for a value type (indirection=0)."""
         if field.is_anonymous_type:
-            return [f'{dst} += npt_sizeof_{field.type_name}((const {field.type_name} *)&{acc});']
-        return [f'{dst} += npt_sizeof_{field.type_name}(&{acc});']
+            return [f'{dst} += npt_sizeof_{field.type_name}((const {field.type_name} *)&{acc}, max_mode);']
+        return [f'{dst} += npt_sizeof_{field.type_name}(&{acc}, max_mode);']
 
     @staticmethod
     def _strlen_expr(accessor, is_wide):
@@ -671,39 +837,73 @@ class Gen:
         # T**+count where T is a struct/union: array of N pointers, each
         # dereferenced to a single inner struct.  acc[_i] is already T*,
         # so pass it directly to npt_sizeof_<T> (no `&`).
+        #
+        # Input path uses the actual filled pointers.  Output path can't
+        # — the host hasn't run yet, so acc[_i] is either NULL or an
+        # uninitialised buffer; passing it to npt_sizeof_<T> either
+        # crashes on NULL deref or silences discriminator-conditional
+        # union arms (zero-init).  Emit a constant upper bound instead:
+        # `array_count + N * (simple_pointer + reply_payload_size(T))`.
         if field.indirection >= 2 and count_expr is not None and not field.is_handle:
+            if for_output:
+                payload = self.reply_payload_size_expr(field.type_name)
+                return [
+                    f'{dst} += npt_sizeof_array_count({count_expr});',
+                    f'{dst} += (size_t)({count_expr}) * '
+                    f'(npt_sizeof_simple_pointer((const void *)1) + '
+                    f'{payload});',
+                ]
             return [
                 f'{dst} += npt_sizeof_array_count({acc} ? {count_expr} : 0);',
                 f'for (uint32_t _i = 0; _i < ({acc} ? {count_expr} : 0); _i++)',
-                f'    {dst} += npt_sizeof_{field.type_name}({acc}[_i]);',
+                f'    {dst} += npt_sizeof_{field.type_name}({acc}[_i], max_mode);',
             ]
 
         if count_expr is None:
             if for_output:
                 # Output simple pointer: host always allocates, so the
-                # reply always includes the presence flag + data, even if
-                # the guest caller passed NULL for an optional param.
-                # void has no compound-literal form, so use NULL as the
-                # dummy argument (npt_sizeof_void ignores it anyway).
+                # reply always includes the presence flag + data, even
+                # if the guest caller passed NULL for an optional param.
+                # The payload size cannot use `npt_sizeof_T(&(const
+                # T){0})` — passing zero-initialised data silences any
+                # discriminator-conditional union arms inside T's
+                # sizing helper (`if (val->ViewDimension == ...)`),
+                # under-reserving the reply and overflowing the encoder
+                # on the host fill.  `reply_payload_size_expr` returns
+                # `sizeof(T)` for statically-bounded types (C alignment
+                # slop ≥ the 4-byte `array_count` prefix the wire
+                # format adds per fixed array, and `sizeof(union)`
+                # covers the largest variant), or `0` for types whose
+                # wire size is runtime-unbounded — in the latter case
+                # the surrounding method is marked unsupported by
+                # `method_reply_is_unsupported` and the template emits
+                # a fatal-flag stub instead of a working reply path.
                 if field.type_name == 'void':
-                    sizeof_arg = 'NULL'
-                else:
-                    sizeof_arg = f'&(const {field.type_name}){{0}}'
+                    return [
+                        f'{dst} += npt_sizeof_simple_pointer((const void *)1);',
+                        f'{dst} += npt_sizeof_void(NULL, max_mode);',
+                    ]
+                payload = self.reply_payload_size_expr(field.type_name)
                 return [
                     f'{dst} += npt_sizeof_simple_pointer((const void *)1);',
-                    f'{dst} += npt_sizeof_{field.type_name}({sizeof_arg});',
+                    f'{dst} += {payload};',
                 ]
             # Simple pointer (single value)
             return [
                 f'{dst} += npt_sizeof_simple_pointer({acc});',
                 f'if ({acc})',
-                f'    {dst} += npt_sizeof_{field.type_name}({acc});',
+                f'    {dst} += npt_sizeof_{field.type_name}({acc}, max_mode);',
             ]
 
         fixed = field.is_fixed_array
         base = self.reg.resolve_alias_chain(field.type_name)
 
         if base in PRIMITIVE_NAMES or field.is_enum:
+            # Primitive arrays are sized by count * wire_size in the
+            # `_array` helpers — the helper iterates but every element
+            # has the same fixed wire size regardless of value, so the
+            # accessor can be zero-init at output sizing time without
+            # affecting the result.
             if fixed:
                 if field.optional:
                     return [
@@ -721,22 +921,42 @@ class Gen:
                 f'    {dst} += npt_sizeof_{field.type_name}_array({acc}, {count_expr});',
             ]
         else:
+            # Struct/union array.  Input path uses real filled data;
+            # output path can't (same reasoning as the simple-pointer
+            # case above) and must emit `count * reply_payload_size(T)`
+            # so that discriminator-silencing doesn't under-reserve.
+            if for_output:
+                payload = self.reply_payload_size_expr(field.type_name)
+                # A non-optional fixed-count array always carries
+                # exactly `count_expr` elements; everything else
+                # collapses to NULL → empty when the array pointer
+                # is absent.
+                if fixed and not field.optional:
+                    return [
+                        f'{dst} += npt_sizeof_array_count({count_expr});',
+                        f'{dst} += (size_t)({count_expr}) * {payload};',
+                    ]
+                return [
+                    f'{dst} += npt_sizeof_array_count({acc} ? {count_expr} : 0);',
+                    f'if ({acc})',
+                    f'    {dst} += (size_t)({count_expr}) * {payload};',
+                ]
             if fixed:
                 if field.optional:
                     return [
                         f'{dst} += npt_sizeof_array_count({acc} ? {count_expr} : 0);',
                         f'for (uint32_t _i = 0; _i < ({acc} ? (uint32_t)({count_expr}) : 0); _i++)',
-                        f'    {dst} += npt_sizeof_{field.type_name}(&{acc}[_i]);',
+                        f'    {dst} += npt_sizeof_{field.type_name}(&{acc}[_i], max_mode);',
                     ]
                 return [
                     f'{dst} += npt_sizeof_array_count({count_expr});',
                     f'for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
-                    f'    {dst} += npt_sizeof_{field.type_name}(&{acc}[_i]);',
+                    f'    {dst} += npt_sizeof_{field.type_name}(&{acc}[_i], max_mode);',
                 ]
             return [
                 f'{dst} += npt_sizeof_array_count({acc} ? {count_expr} : 0);',
                 f'for (uint32_t _i = 0; _i < ({acc} ? {count_expr} : 0); _i++)',
-                f'    {dst} += npt_sizeof_{field.type_name}(&{acc}[_i]);',
+                f'    {dst} += npt_sizeof_{field.type_name}(&{acc}[_i], max_mode);',
             ]
 
     # ------------------------------------------------------------------

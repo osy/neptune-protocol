@@ -21,9 +21,9 @@
 /* ${ty.name} */
 
 static inline size_t
-npt_sizeof_${ty.name}(const ${ty.name} *val)
+npt_sizeof_${ty.name}(const ${ty.name} *val, int max_mode)
 {
-    return npt_sizeof_int32_t((const int32_t *)val);
+    return npt_sizeof_int32_t((const int32_t *)val, max_mode);
 }
 
 static inline void
@@ -66,7 +66,7 @@ npt_decode_${ty.name}_array(struct npt_cs_decoder *dec,
  * aliases below may delegate to them.
  */
 % for ty in STRUCT_TYPES:
-static inline size_t npt_sizeof_${ty.name}(const ${ty.name} *val);
+static inline size_t npt_sizeof_${ty.name}(const ${ty.name} *val, int max_mode);
 static inline void npt_encode_${ty.name}(struct npt_cs_encoder *enc, const ${ty.name} *val);
 static inline void npt_decode_${ty.name}(struct npt_cs_decoder *dec, ${ty.name} *val);
 % endfor
@@ -95,9 +95,9 @@ static inline void npt_decode_${ty.name}(struct npt_cs_decoder *dec, ${ty.name} 
 /* ${ty.name} (alias for ${delegate}) */
 
 static inline size_t
-npt_sizeof_${ty.name}(const ${ty.name} *val)
+npt_sizeof_${ty.name}(const ${ty.name} *val, int max_mode)
 {
-    return npt_sizeof_${delegate}((const ${delegate} *)val);
+    return npt_sizeof_${delegate}((const ${delegate} *)val, max_mode);
 }
 
 static inline void

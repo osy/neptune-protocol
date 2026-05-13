@@ -20,9 +20,8 @@
 
 #define NPT_DEFINE_SCALAR(type, wire_size)                                    ${"\\"}
 static inline size_t                                                          ${"\\"}
-npt_sizeof_##type(const type *val)                                            ${"\\"}
+npt_sizeof_##type(const type *val, int max_mode)                              ${"\\"}
 {                                                                             ${"\\"}
-    (void)val;                                                                ${"\\"}
     return (wire_size);                                                       ${"\\"}
 }                                                                             ${"\\"}
                                                                               ${"\\"}
@@ -74,7 +73,7 @@ NPT_DEFINE_SCALAR(uint64_t, 8)
 NPT_DEFINE_SCALAR(int64_t,  8)
 
 /* float/double: reinterpret-cast to unsigned, then serialize */
-static inline size_t npt_sizeof_float(const float *val) { (void)val; return 4; }
+static inline size_t npt_sizeof_float(const float *val, int max_mode) { return 4; }
 static inline void npt_encode_float(struct npt_cs_encoder *enc, const float *val)
 {
     npt_cs_encoder_write(enc, 4, val, sizeof(*val));
@@ -99,7 +98,7 @@ static inline void npt_decode_float_array(struct npt_cs_decoder *dec,
     npt_cs_decoder_read(dec, sizeof(float) * count, val, sizeof(float) * count);
 }
 
-static inline size_t npt_sizeof_double(const double *val) { (void)val; return 8; }
+static inline size_t npt_sizeof_double(const double *val, int max_mode) { return 8; }
 static inline void npt_encode_double(struct npt_cs_encoder *enc, const double *val)
 {
     npt_cs_encoder_write(enc, 8, val, sizeof(*val));
@@ -130,9 +129,8 @@ static inline void npt_decode_double_array(struct npt_cs_decoder *dec,
 /* GUID                                                                */
 /* ------------------------------------------------------------------ */
 
-static inline size_t npt_sizeof_GUID(const GUID *val)
+static inline size_t npt_sizeof_GUID(const GUID *val, int max_mode)
 {
-    (void)val;
     return 16;
 }
 
@@ -147,12 +145,12 @@ static inline void npt_decode_GUID(struct npt_cs_decoder *dec, GUID *val)
 }
 
 /* C keyword type delegates */
-static inline size_t npt_sizeof_int(const int *val) { return npt_sizeof_int32_t((const int32_t *)val); }
+static inline size_t npt_sizeof_int(const int *val, int max_mode) { return npt_sizeof_int32_t((const int32_t *)val, max_mode); }
 static inline void npt_encode_int(struct npt_cs_encoder *enc, const int *val) { npt_encode_int32_t(enc, (const int32_t *)val); }
 static inline void npt_decode_int(struct npt_cs_decoder *dec, int *val) { npt_decode_int32_t(dec, (int32_t *)val); }
 
 /* LONG -- needed by POINT/RECT below, before types.h is included */
-static inline size_t npt_sizeof_LONG(const LONG *val) { return npt_sizeof_int32_t((const int32_t *)val); }
+static inline size_t npt_sizeof_LONG(const LONG *val, int max_mode) { return npt_sizeof_int32_t((const int32_t *)val, max_mode); }
 static inline void npt_encode_LONG(struct npt_cs_encoder *enc, const LONG *val) { npt_encode_int32_t(enc, (const int32_t *)val); }
 static inline void npt_decode_LONG(struct npt_cs_decoder *dec, LONG *val) { npt_decode_int32_t(dec, (int32_t *)val); }
 
@@ -160,9 +158,8 @@ static inline void npt_decode_LONG(struct npt_cs_decoder *dec, LONG *val) { npt_
 /* POINT { LONG x, y; }                                                */
 /* ------------------------------------------------------------------ */
 
-static inline size_t npt_sizeof_POINT(const POINT *val)
+static inline size_t npt_sizeof_POINT(const POINT *val, int max_mode)
 {
-    (void)val;
     return 8; /* 2 x LONG (4 bytes each) */
 }
 
@@ -182,9 +179,8 @@ static inline void npt_decode_POINT(struct npt_cs_decoder *dec, POINT *val)
 /* RECT { LONG left, top, right, bottom; }                             */
 /* ------------------------------------------------------------------ */
 
-static inline size_t npt_sizeof_RECT(const RECT *val)
+static inline size_t npt_sizeof_RECT(const RECT *val, int max_mode)
 {
-    (void)val;
     return 16; /* 4 x LONG (4 bytes each) */
 }
 
@@ -416,9 +412,8 @@ static inline void npt_decode_win32_handle(struct npt_cs_decoder *dec,
  * ppBuffer, ID3D12Resource::Map's ppData).  On the wire a void* is
  * represented as a uint64 host-pointer-as-id. */
 
-static inline size_t npt_sizeof_void(const void *val)
+static inline size_t npt_sizeof_void(const void *val, int max_mode)
 {
-    (void)val;
     return sizeof(uint64_t);
 }
 

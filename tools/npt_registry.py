@@ -485,6 +485,9 @@ class TypeRegistry:
         self.consts: list[NptType] = []
         self.aliases: list[NptType] = []
         self._warnings: list[str] = []
+        # Memoizes `is_dynamic_wire_size`: ~800 calls/codegen vs. ~471
+        # distinct structs, so re-walks dominate without this.
+        self._dynamic_wire_size_cache: dict[str, bool] = {}
 
     def warn(self, msg):
         self._warnings.append(msg)
@@ -1028,6 +1031,109 @@ class TypeRegistry:
         """Check if a type name refers to an interface."""
         ntype = self.types.get(type_name)
         return ntype is not None and ntype.category == Category.INTERFACE
+
+    def is_dynamic_wire_size(self, type_name):
+        """
+        True iff a value of ``type_name`` has runtime-unbounded packed wire
+        size — i.e., ``sizeof(type_name)`` is *not* a sound upper bound on
+        how many bytes the encoder will write.
+
+        Used when sizing a reply slot before the host has filled the data:
+        for ``DYNAMIC`` types the guest cannot reserve a meaningful slot
+        size in advance, so the codegen refuses to emit a working reply
+        path for methods whose reply contains a ``DYNAMIC`` type.
+
+        Returns False for primitives, enums, handles, interfaces, and
+        struct/union types whose fields are all statically bounded
+        (including discriminated unions — the largest variant fits in
+        ``sizeof(T)``).
+
+        Returns True when any reachable field is:
+          - a null-terminated string/wstring (runtime strlen);
+          - a blob (void* with runtime byte count);
+          - a runtime-counted array (count is a sibling field);
+          - a simple pointer to a DYNAMIC type (catches linked-list heads);
+          - a fixed array whose element type is DYNAMIC.
+
+        Self-referential types (a chain pointer back into the same struct)
+        are treated as DYNAMIC — the chain depth is a runtime property.
+        """
+        return self._is_dynamic_wire_size(type_name, set())
+
+    def _is_dynamic_wire_size(self, type_name, visited):
+        if type_name is None or type_name in PRIMITIVE_NAMES:
+            return False
+        if type_name in visited:
+            # Self-reference reached via a pointer chain → unbounded depth.
+            # Don't cache: this is a property of the current walk, not of
+            # `type_name` in isolation.
+            return True
+        cached = self._dynamic_wire_size_cache.get(type_name)
+        if cached is not None:
+            return cached
+        ntype = self.types.get(type_name)
+        if ntype is None:
+            return False
+        if ntype.category == Category.ALIAS:
+            result = self._is_dynamic_wire_size(ntype.alias_target, visited)
+        elif ntype.category in (Category.PRIMITIVE, Category.ENUM,
+                                Category.INTERFACE, Category.CONST,
+                                Category.FUNCTION):
+            result = False
+        elif ntype.category not in (Category.STRUCT, Category.UNION):
+            result = False
+        else:
+            next_visited = visited | {type_name}
+            result = any(self._field_makes_dynamic(f, next_visited)
+                         for f in ntype.fields)
+        self._dynamic_wire_size_cache[type_name] = result
+        return result
+
+    def _field_makes_dynamic(self, field, visited):
+        # Bitfields encode as a fixed uint32_t — FIXED.
+        if field.bitwidth is not None:
+            return False
+        # Handles are a single uint64_t object id — FIXED.
+        if field.is_handle:
+            return False
+        # Strings (no count) have runtime length.
+        if self.is_string_type(field) or self.is_wstring_type(field):
+            return True
+        # Blob (void* with byte count): runtime length.
+        if field.is_blob:
+            return True
+        # Non-serializable bare types — should not appear in a reply path,
+        # but if they do they're definitely not FIXED.  Conservatively dynamic.
+        if (field.type_name in NON_SERIALIZABLE_TYPES
+                and not field.is_handle
+                and not (field.indirection >= 1 and field.count is not None)):
+            return True
+        # Value field (no indirection): recurse into the pointee type.
+        if field.indirection == 0:
+            inner_name = field.type_name
+            # Anonymous inline struct/union: walk type_ref.fields directly.
+            if (field.name is None and field.type_ref is not None
+                    and field.type_ref.is_anonymous
+                    and field.type_ref.category in (Category.STRUCT,
+                                                    Category.UNION)):
+                return any(self._field_makes_dynamic(f, visited)
+                           for f in field.type_ref.fields)
+            return self._is_dynamic_wire_size(inner_name, visited)
+        # Interface pointers encode as a single uint64_t — FIXED.
+        if self.is_interface_type(field.type_name):
+            return False
+        # Arrays.
+        if field.count is not None:
+            if not field.is_fixed_array:
+                # Runtime-counted array: unbounded length.
+                return True
+            # Fixed-count array: dynamic only if elements are dynamic.
+            return self._is_dynamic_wire_size(field.type_name, visited)
+        # Simple pointer (no count) to a known type.
+        if field.indirection == 1:
+            return self._is_dynamic_wire_size(field.type_name, visited)
+        # T** without count: shouldn't normally appear; treat as dynamic.
+        return True
 
     def field_wire_size_known(self, field):
         """

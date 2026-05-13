@@ -38,16 +38,10 @@ def method_full_name(iface_name, method_name):
 /* ${ty.name} (${'union' if ty.category.name == 'UNION' else 'struct'}) */
 
 static inline size_t
-npt_sizeof_${ty.name}(const ${ty.name} *val)
+npt_sizeof_${ty.name}(const ${ty.name} *val, int max_mode)
 {
     size_t size = 0;
-% for item in processed:
-% if isinstance(item, tuple):
-${GEN.sizeof_bitfield(item[1], 'val->', 'size')}
-% else:
-${GEN.sizeof_field(item, 'val->', 'size')}
-% endif
-% endfor
+${GEN.sizeof_struct_body(ty, processed, 'val->', 'size')}\
     return size;
 }
 
@@ -100,6 +94,13 @@ ${code}
     output_params = [p for p in method.params if p.output]
     _has_ret = GEN.has_return(method.return_type)
     _is_scalar = GEN.is_scalar_return(method.return_type)
+    # True when the reply contains a type whose wire size is runtime-
+    # unbounded (DRED chain pointers, root-signature parameter arrays,
+    # ...).  Such methods cannot use a pre-reserved fixed-size reply
+    # slot, so the host encode_reply sets the encoder fatal flag and
+    # the guest decode path takes the reply-mismatch branch and
+    # returns the documented default for the call's return type.
+    _reply_unsupported = GEN.method_reply_is_unsupported(method)
 %>\
 /*
  * ${iface.name}::${method.name}
@@ -147,6 +148,10 @@ void\
 % endif
 )
 {
+    /* Command sizing walks caller-supplied input data, so the active
+     * discriminator picks the union arm -- max_mode=0. */
+    const int max_mode = 0;
+    (void)max_mode;  /* unused when the command has no struct/union inputs */
     size_t cmd_size = sizeof(struct npt_command_header);
 % for p in all_params:
 ${GEN.sizeof_input_param(p, '', 'cmd_size')}
@@ -192,13 +197,24 @@ void\
 % endif
 )
 {
+    /* Reply sizing reserves an upper bound before the host has filled
+     * the data, so union arms size as max-of-arms regardless of the
+     * caller's discriminator -- max_mode=1. */
+    const int max_mode = 1;
+    (void)max_mode;  /* unused when the reply has no struct/union outputs */
     size_t cmd_size = sizeof(struct npt_reply_header);
+% if _reply_unsupported:
+    /* Reply has runtime-unbounded wire size; reserve only the header.
+     * Host encode_reply sets the encoder fatal flag and the guest
+     * decode path returns the documented default. */
+% else:
 % if _has_ret and not _is_scalar:
-    cmd_size += npt_sizeof_${method.return_type}(&(const ${method.return_type}){0});
+    cmd_size += ${GEN.reply_payload_size_expr(method.return_type)};
 % endif
 % for p in all_params:
 ${GEN.sizeof_output_param(p, '', 'cmd_size')}
 % endfor
+% endif
     return cmd_size;
 }
 
@@ -233,6 +249,16 @@ static inline void
 npt_encode_${fname}_reply(struct npt_cs_encoder *enc,
 ${' ' * (len('npt_encode_') + len(fname) + len('_reply') + 1)}const struct npt_command_${fname} *args)
 {
+% if _reply_unsupported:
+    /* ${iface.name}::${method.name}: reply contains a type with
+     * runtime-unbounded wire size (e.g. DRED chain pointers, root-
+     * signature parameter arrays).  A pre-reserved fixed-size reply
+     * slot cannot represent this without truncating the host data, so
+     * the guest gets a clean reply-mismatch via the encoder fatal
+     * flag rather than a corrupted stream. */
+    npt_cs_encoder_set_fatal(enc);
+    return;
+% else:
     struct npt_reply_header _reply = {
         .cmd_type = NPT_CMD_TYPE(255, NPT_IFACE_ID_${iface.name},
                                  NPT_METHOD_${fname}),
@@ -260,6 +286,7 @@ ${' ' * (len('npt_encode_') + len(fname) + len('_reply') + 1)}const struct npt_c
 ${GEN.encode_output_param(p, 'args->')}
 % endif
 % endfor
+% endif
 }
 
 <%
@@ -508,6 +535,8 @@ ${' ' * (len('npt_call_') + len(fname) + 1)}${GEN.c_type(p)} ${p.name}\
     output_params = [p for p in func.params if p.output]
     _has_ret = GEN.has_return(func.return_type)
     _is_scalar = GEN.is_scalar_return(func.return_type)
+    # See the corresponding comment in the method block above.
+    _reply_unsupported = GEN.method_reply_is_unsupported(func)
 %>\
 /*
  * ${func.name} (group ${func.group}, id ${func.id})
@@ -546,6 +575,8 @@ void\
 % endif
 )
 {
+    const int max_mode = 0;
+    (void)max_mode;
     size_t cmd_size = sizeof(struct npt_command_header); /* header only, no UUID */
 % for p in all_params:
 ${GEN.sizeof_input_param(p, '', 'cmd_size')}
@@ -589,13 +620,19 @@ void\
 % endif
 )
 {
+    const int max_mode = 1;
+    (void)max_mode;
     size_t cmd_size = sizeof(struct npt_reply_header);
+% if _reply_unsupported:
+    /* Reply has runtime-unbounded wire size; reserve only the header. */
+% else:
 % if _has_ret and not _is_scalar:
-    cmd_size += npt_sizeof_${func.return_type}(&(const ${func.return_type}){0});
+    cmd_size += ${GEN.reply_payload_size_expr(func.return_type)};
 % endif
 % for p in all_params:
 ${GEN.sizeof_output_param(p, '', 'cmd_size')}
 % endfor
+% endif
     return cmd_size;
 }
 
@@ -630,6 +667,14 @@ static inline void
 npt_encode_${fname}_reply(struct npt_cs_encoder *enc,
 ${' ' * (len('npt_encode_') + len(fname) + len('_reply') + 1)}const struct npt_command_${fname} *args)
 {
+% if _reply_unsupported:
+    /* ${func.name}: reply has runtime-unbounded wire size; cannot use
+     * a fixed-size reply slot.  Set the encoder fatal flag so the
+     * guest's reply decoder takes the mismatch branch and returns the
+     * documented default. */
+    npt_cs_encoder_set_fatal(enc);
+    return;
+% else:
     struct npt_reply_header _reply = {
         .cmd_type = NPT_CMD_TYPE_TOPLEVEL(${func.group}, ${func.id}),
 % if _is_scalar:
@@ -656,6 +701,7 @@ ${' ' * (len('npt_encode_') + len(fname) + len('_reply') + 1)}const struct npt_c
 ${GEN.encode_output_param(p, 'args->')}
 % endif
 % endfor
+% endif
 }
 
 static inline void
