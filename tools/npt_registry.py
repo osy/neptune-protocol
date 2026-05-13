@@ -103,6 +103,11 @@ class NptField:
     # -1 means "not a sibling field — don't prefix" (global constant).
     _size_deref: int = -1
     _size_output_deref: int = -1
+    # Computed: True iff a pointer-deref count term references a field marked
+    # optional (i.e., the count pointer itself can be NULL).  In that case,
+    # the codegen must guard every `*pCount` with `(pCount ? *pCount : 0)`.
+    _size_optional: bool = False
+    _size_output_optional: bool = False
 
     @property
     def is_handle(self):
@@ -812,15 +817,18 @@ class TypeRegistry:
         dereferences are needed to get the count value.
         A size field at indirection 0 needs 0 derefs (val->Count).
         A size field at indirection 1 needs 1 deref (*val->pCount).
-        Stores the result as field._size_deref and field._size_output_deref."""
+        Stores the result as field._size_deref and field._size_output_deref.
+        Also computes field._size_optional / _size_output_optional, set when
+        the count field is itself a nullable pointer (e.g. PSGetShader's
+        pNumClassInstances) so the codegen guards `*pCount` against NULL."""
         def resolve_fields(fields):
             field_map = {}
             # First pass: collect all accessible field names + their indirection
-            # (including anonymous inner fields which are accessed through parent)
+            # and optionality (anonymous inner fields are accessed through parent)
             def collect(flist):
                 for f in flist:
                     if f.name:
-                        field_map[f.name] = f.indirection
+                        field_map[f.name] = (f.indirection, f.optional)
                     if f.name is None and f.type_ref and \
                             f.type_ref.category in (Category.STRUCT, Category.UNION):
                         collect(f.type_ref.fields)
@@ -830,34 +838,43 @@ class TypeRegistry:
             # -1 means "not a sibling field — don't prefix" (global constant)
             def _resolve_count_str(s):
                 """Check if a count string references known fields.
-                Returns the max deref needed, or -1 if not all terms are fields."""
+                Returns (max_deref, any_optional_deref) where any_optional_deref
+                is True iff any pointer-deref term targets an optional field.
+                Returns (-1, False) if not all terms resolve to fields."""
                 parsed = parse_count_expr(s)
                 if parsed is None:
-                    return -1
+                    return -1, False
                 # Split on '*' for multiplication terms
                 terms = [t.strip() for t in parsed.split('*')]
                 max_deref = 0
+                any_optional = False
                 for term in terms:
                     if term.isdigit() or term.startswith('sizeof('):
                         continue
                     base = term.split('->')[0] if '->' in term else term
                     if base in field_map:
-                        if field_map[base] > 1:
+                        ind, opt = field_map[base]
+                        if ind > 1:
                             raise ValueError(
                                 f"count field '{base}' has indirection "
-                                f"{field_map[base]} (expected 0 or 1)")
-                        max_deref = max(max_deref, field_map[base])
+                                f"{ind} (expected 0 or 1)")
+                        max_deref = max(max_deref, ind)
+                        if ind >= 1 and opt:
+                            any_optional = True
                     else:
-                        return -1  # unknown term
-                return max_deref
+                        return -1, False  # unknown term
+                return max_deref, any_optional
 
             def set_derefs(flist):
                 for f in flist:
                     if isinstance(f.count, str):
-                        f._size_deref = _resolve_count_str(f.count)
+                        f._size_deref, f._size_optional = \
+                            _resolve_count_str(f.count)
                     if f.count_output:
                         if f.count_output in field_map:
-                            f._size_output_deref = field_map[f.count_output]
+                            ind, opt = field_map[f.count_output]
+                            f._size_output_deref = ind
+                            f._size_output_optional = ind >= 1 and opt
                     # Recurse into anonymous inner types
                     if f.name is None and f.type_ref and \
                             f.type_ref.category in (Category.STRUCT, Category.UNION):

@@ -394,11 +394,14 @@ class Gen:
         return f'{prefix}{field.name}' if field.name else prefix.rstrip('.')
 
     @staticmethod
-    def _resolve_size_term(term, prefix, deref):
+    def _resolve_size_term(term, prefix, deref, optional=False):
         """Resolve a single term in a size expression to a C expression.
         term is one of: "FieldName", "FieldName->Member", "sizeof(TYPE)", or a number.
         prefix is e.g. "val->" or "" (for command params).
         deref is the number of pointer dereferences needed for the base field.
+        optional, when True with deref>=1, wraps the deref in a NULL guard so
+        a nullable count pointer (e.g. PSGetShader's pNumClassInstances) does
+        not crash sizing/encoding paths.
         """
         term = term.strip()
         if term.isdigit():
@@ -414,6 +417,8 @@ class Gen:
         # deref == -1 means global constant (not a sibling field) — don't prefix.
         if deref < 0:
             return term
+        if deref >= 1 and optional:
+            return f'({prefix}{term} ? *{prefix}{term} : 0)'
         return f'{"*" * deref}{prefix}{term}'
 
     def _get_count_expr(self, field, prefix):
@@ -439,7 +444,9 @@ class Gen:
             # Split on '*' for multiplication
             terms = [t.strip() for t in parsed.split('*')]
             deref = field._size_deref
-            c_terms = [self._resolve_size_term(t, prefix, deref) for t in terms]
+            optional = field._size_optional
+            c_terms = [self._resolve_size_term(t, prefix, deref, optional)
+                       for t in terms]
             return ' * '.join(c_terms)
 
         return None
@@ -450,6 +457,9 @@ class Gen:
             deref = field._size_output_deref
             if deref < 0:
                 return field.count_output
+            if deref >= 1 and field._size_output_optional:
+                return (f'({prefix}{field.count_output} ? '
+                        f'*{prefix}{field.count_output} : 0)')
             return f'{"*" * deref}{prefix}{field.count_output}'
         return self._get_count_expr(field, prefix)
 
