@@ -1655,10 +1655,16 @@ class Gen:
                     acc, size_expr,
                     f'npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name}), {size_expr})',
                     f'sizeof({field.type_name}) * {size_expr}', ind)
+            # Unsized void* output (e.g. ID3D11Device3::ReadFromSubresource
+            # pDstData): the method is skipped from serialization, but the
+            # dispatcher still needs a non-NULL backing slot so the original
+            # call doesn't crash.  `sizeof(void)` is a GNU extension; use a
+            # one-byte fallback that's portable across compilers.
+            elem_size = '1' if field.type_name in ('void', 'VOID') else f'sizeof({field.type_name})'
             return '\n'.join([
-                f'{ind}{acc} = npt_cs_decoder_alloc_temp(dec, sizeof({field.type_name}));',
+                f'{ind}{acc} = npt_cs_decoder_alloc_temp(dec, {elem_size});',
                 f'{ind}if (!{acc}) return;',
-                f'{ind}memset({acc}, 0, sizeof({field.type_name}));',
+                f'{ind}memset({acc}, 0, {elem_size});',
             ])
         # Fixed-size output array: c_type bumps indirection to 1 in the args
         # struct, so the field is a NULL pointer at decode time.  The reply

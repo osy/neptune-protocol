@@ -231,10 +231,10 @@ class Registry:
         self.anonymous_types = []
 
     def load(self, json_path, overlay_paths=None):
-        with open(json_path, 'r') as f:
+        with open(json_path, 'r', encoding='utf-8') as f:
             base = json.load(f)
         for overlay_path in (overlay_paths or []):
-            with open(overlay_path, 'r') as f:
+            with open(overlay_path, 'r', encoding='utf-8') as f:
                 overlay = json.load(f)
             merge_overlay(base, overlay)
         self._build(base)
@@ -1490,7 +1490,9 @@ def _gen_host_encode_reply(out, reg, iface, method, fname, is_toplevel, idx):
             elif ret_t and ret_t.category in ('struct', 'union'):
                 out.write(f'    npt_test_fill(&args.ret, sizeof(args.ret), &seed);\n\n')
             else:
-                out.write(f'    args.ret = ({ret_type})npt_test_rand(&seed);\n\n')
+                # Cast via uintptr_t so HANDLE (pointer-sized) doesn't trip
+                # MSVC's C4312 warning when widening from uint32_t.
+                out.write(f'    args.ret = ({ret_type})(uintptr_t)npt_test_rand(&seed);\n\n')
 
     # Initialize input params (for count fields needed by output)
     _gen_method_param_init(out, reg, params, fields_map, 'args.',
@@ -2714,11 +2716,13 @@ def write_if_changed(path, content):
     """Only write the file if the content differs."""
     path = Path(path)
     if path.exists():
-        existing = path.read_text()
+        existing = path.read_text(encoding='utf-8')
         if existing == content:
             path.touch()
             return False
-    path.write_text(content)
+    # LF-only line endings, see write_file() in npt_protocol.py for why.
+    with open(path, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(content)
     return True
 
 

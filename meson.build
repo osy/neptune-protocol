@@ -12,6 +12,28 @@ project(
                     'c_std=c11'],
 )
 
+cc = meson.get_compiler('c')
+
+if cc.get_id() == 'msvc' or cc.get_id() == 'clang-cl'
+  # MSVC defaults to /WX (errors-as-warnings via werror=true above).
+  # Suppress noisy warnings that pop up in the generated code.
+  add_project_arguments(
+    '/wd4068',  # unknown pragma (e.g. #pragma GCC diagnostic)
+    '/wd4146',  # unary minus applied to unsigned (intentional)
+    '/wd4200',  # zero-sized array in struct/union (flexible array)
+    '/wd4221',  # nonstandard: address-of automatic local in initializer (compound literals)
+    '/wd4204',  # nonstandard: non-constant aggregate initializer (compound literals)
+    '/wd4090',  # different '_Atomic'/'const' qualifiers (HRESULT casts)
+    '/wd5287',  # operands of different enum types (DXGI_FORMAT vs int)
+    '/wd5286',  # implicit conversion from enum to a different enum type
+    '/wd4324',  # structure was padded due to __declspec(align())
+    '/wd4310',  # cast truncates constant value
+    '/D_CRT_SECURE_NO_WARNINGS',
+    '/D_CRT_NONSTDC_NO_WARNINGS',
+    language: 'c',
+  )
+endif
+
 py = import('python').find_installation('python3', modules: ['mako'])
 
 npt_json = get_option('json')

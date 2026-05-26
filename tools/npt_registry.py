@@ -502,14 +502,14 @@ class TypeRegistry:
 
     def load(self, json_path, overlay_paths=None, interface_ids_path=None):
         """Load base JSON and apply overlays, then pin interface ids."""
-        with open(json_path, 'r') as f:
+        with open(json_path, 'r', encoding='utf-8') as f:
             base = json.load(f)
 
         self.source_files = base.get('source_files', [])
         self.version = base.get('version', 0)
 
         for overlay_path in (overlay_paths or []):
-            with open(overlay_path, 'r') as f:
+            with open(overlay_path, 'r', encoding='utf-8') as f:
                 overlay = json.load(f)
             merge_overlay(base, overlay)
 
@@ -535,7 +535,7 @@ class TypeRegistry:
         pin cannot silently regress.  The error message tells the dev
         to run tools/npt_allocate_interface_id.py.
         """
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
         # Canonicalise: int keys, lower-case GUIDs, validate shape.

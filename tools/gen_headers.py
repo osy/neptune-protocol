@@ -199,22 +199,22 @@ class HeaderWriter:
         self.writeln('#endif /* NPT_PROTOCOL_DIRECTX_H */')
 
     def emit_windows_types(self):
-        # Windows MSVC: pull in the full SDK headers (Windows 10/11).
-        # Windows MinGW: pull in <windows.h> for the base types but skip the
-        #   D3D headers (which are too old).  The protocol's own fallback
-        #   typedefs cover the missing D3D types.
-        # Native Linux: use protocol fallbacks for everything.
-        self.writeln('#if defined(_WIN32) && !defined(__MINGW32__)')
-        self.writeln()
-        for idl in self.reg.source_files:
-            header = idl.replace('.idl', '.h')
-            self.writeln(f'#include <{header}>')
-        self.writeln()
-        self.writeln('#elif defined(__MINGW32__)')
+        # Windows MSVC: by default, pull in <windows.h> for the base Win32
+        #   types (HRESULT, GUID, LONG, RECT, ...).  Skip the D3D SDK headers
+        #   because their struct layouts diverge from the protocol's
+        #   overlay-driven tagged-union representation of several types
+        #   (e.g. D3D12_STATE_SUBOBJECT), and some SDK typedefs use
+        #   different struct tags than ours so bulk-redeclaring them as
+        #   `typedef struct X X;` conflicts.  The protocol's own fallback
+        #   typedefs cover all D3D-specific types.
+        # Windows MinGW: same approach.
+        # Native Linux: protocol fallbacks for everything (no <windows.h>).
+        self.writeln('#if defined(_WIN32)')
         self.writeln()
         self.writeln('/* Pull in basic Win32 types (HRESULT, GUID, LONG, ...) from windows.h')
-        self.writeln(' * but rely on this protocol header for the D3D-specific types that')
-        self.writeln(' * MinGW\'s d3d11.h / d3d12.h are missing.  unknwn.h provides IUnknown. */')
+        self.writeln(' * but rely on this protocol header for the D3D-specific types so the')
+        self.writeln(' * overlay-driven tagged-union representation stays self-consistent.')
+        self.writeln(' * unknwn.h provides IUnknown. */')
         self.writeln('#ifndef WIN32_LEAN_AND_MEAN')
         self.writeln('#  define WIN32_LEAN_AND_MEAN')
         self.writeln('#endif')
@@ -315,7 +315,7 @@ class HeaderWriter:
             # MinGW with different struct tags, so re-typedef'ing them
             # conflicts.  Skip those names on MinGW.
             if ntype.name in WIN32_BASE_NAMES:
-                self.writeln(f'#ifndef __MINGW32__')
+                self.writeln(f'#ifndef _WIN32')
                 self.writeln(f'typedef {kind} {ntype.name} {ntype.name};')
                 self.writeln(f'#endif')
             else:
@@ -336,7 +336,7 @@ class HeaderWriter:
             # by windows.h (just with a different definition).  Skip them
             # there to avoid conflicts.
             if name in WIN32_BASE_NAMES:
-                self.writeln(f'#ifndef __MINGW32__')
+                self.writeln(f'#ifndef _WIN32')
                 self.writeln(f'typedef int {name}; /* placeholder */')
                 self.writeln(f'#endif')
             else:
@@ -416,7 +416,7 @@ class HeaderWriter:
             # HRESULT etc. come from windows.h on MinGW with a different
             # underlying type (LONG vs int32_t).  Skip on MinGW.
             if ty.name in WIN32_BASE_NAMES:
-                self.writeln(f'#ifndef __MINGW32__')
+                self.writeln(f'#ifndef _WIN32')
                 self.writeln(f'typedef {ty.alias_target} {ty.name};')
                 self.writeln(f'#endif')
             else:
@@ -438,11 +438,11 @@ class HeaderWriter:
                 continue
 
             kind = 'union' if ntype.category == Category.UNION else 'struct'
-            # Wrap WIN32_BASE_NAMES struct definitions in #ifndef __MINGW32__
+            # Wrap WIN32_BASE_NAMES struct definitions in #ifndef _WIN32
             # because windows.h defines them with different struct tags.
             wrap_mingw = ntype.name in WIN32_BASE_NAMES
             if wrap_mingw:
-                self.writeln('#ifndef __MINGW32__')
+                self.writeln('#ifndef _WIN32')
             self.writeln(f'{kind} {ntype.name} {{')
             self._emit_fields(ntype.fields, indent=1)
             self.writeln(f'}};')
@@ -468,6 +468,33 @@ class HeaderWriter:
         if any_emitted:
             self.writeln()
 
+    def emit_sdk_typedef_bridge(self):
+        """On MSVC, the Windows SDK headers declare a handful of structs as
+        `struct X { ... };` without a matching `typedef struct X X;` (e.g.
+        D3D12_RT_FORMAT_ARRAY).  C++ folds the struct tag into the type-name
+        namespace automatically, but in C we need an explicit typedef before
+        the bare name `D3D12_RT_FORMAT_ARRAY` works.  Emit `typedef struct X X;`
+        for every registry struct/union — duplicates against SDK typedefs are
+        allowed in C11."""
+        all_ordered = collect_struct_types(self.reg)
+        any_emitted = False
+        for ntype in all_ordered:
+            if not ntype.name:
+                continue
+            if '__anon_' in ntype.name:
+                continue
+            if ntype.name in PREAMBLE_STRUCT_NAMES:
+                continue
+            if ntype.name in WIN32_BASE_NAMES:
+                continue
+            if not any_emitted:
+                self.writeln('/* Forward typedefs for SDK structs that MIDL emitted without typedef */')
+                any_emitted = True
+            kind = 'union' if ntype.category == Category.UNION else 'struct'
+            self.writeln(f'typedef {kind} {ntype.name} {ntype.name};')
+        if any_emitted:
+            self.writeln()
+
     def emit_functions(self):
         if not self.reg.functions:
             return
@@ -477,7 +504,8 @@ class HeaderWriter:
                 continue
             ret = func.return_type or 'void'
             params = self._format_params(func.params)
-            self.writeln(f'{ret} {func.name}({params});')
+            self.writeln(
+                f'{ret} NPT_STDMETHODCALLTYPE {func.name}({params});')
         self.writeln()
 
     # -------------------------------------------------------------------
@@ -550,11 +578,10 @@ class HeaderWriter:
         self._collect_undefined_types()
         self.emit_preamble()
         self.emit_windows_types()
-        # On real Windows (MSVC) the SDK headers provide everything below.
-        # On MinGW and on Linux we need our own definitions because the
-        # bundled headers are incomplete.
-        self.writeln('#if !defined(_WIN32) || defined(__MINGW32__)')
-        self.writeln()
+        # On all platforms we emit our own D3D/DXGI type definitions because
+        # the protocol's overlay-driven tagged-union representation can't be
+        # expressed in terms of the SDK structs.  The MinGW guards inside
+        # these emitters skip the Win32 base types that come from <windows.h>.
         self.emit_forward_declarations()
         self.emit_undefined_placeholders()
         self.emit_constants()
@@ -563,8 +590,6 @@ class HeaderWriter:
         self.emit_structs_unions()
         self.emit_anon_typedefs()
         self.emit_functions()
-        self.writeln('#endif /* !_WIN32 || __MINGW32__ */')
-        self.writeln()
         self.emit_footer()
         return self.result()
 
@@ -600,7 +625,9 @@ def main():
     content = writer.generate()
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(content)
+    # LF-only line endings, see write_file() in npt_protocol.py for why.
+    with open(args.output, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(content)
     print(f'Wrote {args.output} ({len(content)} bytes)')
     return 0
 

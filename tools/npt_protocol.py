@@ -56,8 +56,11 @@ def group_interfaces(interfaces):
 # -----------------------------------------------------------------------
 
 def render_template(name, **kwargs):
-    tmpl = Template(filename=str(TEMPLATE_DIR / name),
-                    module_directory=str(TOOLS_DIR / '__mako_cache__'))
+    # No module_directory: keep templates compiled in memory only.  Using a
+    # shared on-disk cache causes the concurrent host + guest + client
+    # custom_targets to race on the same .py / .pyc files and fail with
+    # PermissionError on Windows.
+    tmpl = Template(filename=str(TEMPLATE_DIR / name))
     return tmpl.render(**kwargs)
 
 
@@ -66,12 +69,19 @@ def write_file(outdir, filename, content):
     # Only write if content changed.  Meson tracks outputs by mtime, so
     # always touch the file even on a no-op write so the build system
     # considers the custom_target satisfied.
+    #
+    # Always write LF-only line endings.  MSVC's preprocessor (especially
+    # with /utf-8) does not splice `\<CR><LF>` line continuations the way
+    # `\<LF>` ones are spliced, so macro definitions with a trailing
+    # backslash break apart if CRLF gets into the file (e.g. via Mako
+    # rendering CRLF templates on Windows).
     if path.exists():
-        existing = path.read_text()
+        existing = path.read_text(encoding='utf-8')
         if existing == content:
             path.touch()
             return
-    path.write_text(content)
+    with open(path, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(content)
     print(f'  wrote {filename}')
 
 

@@ -3,10 +3,28 @@
 
 tests_inc = include_directories('.')
 
-test_c_args = [
-  '-Wno-unused-function',
-  '-Wno-unused-parameter',
-]
+if cc.get_id() == 'msvc' or cc.get_id() == 'clang-cl'
+  test_c_args = [
+    '/wd4100',  # unreferenced formal parameter (=-Wno-unused-parameter)
+    '/wd4505',  # unreferenced local function has been removed (=-Wno-unused-function)
+    '/wd4189',  # local variable is initialized but not referenced
+    '/wd4101',  # unreferenced local variable
+    '/wd4127',  # conditional expression is constant
+    '/wd4244',  # conversion, possible loss of data
+    '/wd4267',  # conversion from size_t, possible loss of data
+    '/wd4245',  # conversion from int to unsigned, signed/unsigned mismatch
+    '/wd4389',  # signed/unsigned mismatch
+    '/wd4018',  # signed/unsigned mismatch in comparison
+    '/wd4459',  # declaration of X hides global declaration
+    '/wd4456',  # declaration of X hides previous local declaration
+    '/wd4457',  # declaration of X hides function parameter
+  ]
+else
+  test_c_args = [
+    '-Wno-unused-function',
+    '-Wno-unused-parameter',
+  ]
+endif
 
 # --- Test generator ---
 npt_testgen_outputs = [
