@@ -475,6 +475,32 @@ class Gen:
         """C return type string ('void' for void-typed methods)."""
         return ret_type if self.has_return(ret_type) else 'void'
 
+    def is_aggregate_return(self, ret_type):
+        """True when the method returns a struct/union by value.
+
+        COM x64 ABI: for methods returning an aggregate, both MSVC C++
+        member functions and widl-generated C vtables pass the return
+        through a hidden pointer inserted after `this`:
+
+            RET *fn(this, RET *ret, params...)   // returns `ret`
+
+        This holds for EVERY aggregate, even register-sized ones like
+        D3D12_CPU_DESCRIPTOR_HANDLE (the famous
+        GetCPUDescriptorHandleForHeapStart ABI trap).  Scalar returns
+        (enums, primitives, 8-byte UINT64) use plain register return.
+        """
+        if not self.has_return(ret_type):
+            return False
+        ref = self.reg.get_type(ret_type)
+        if ref and ref.category == Category.ENUM:
+            return False
+        base = self.reg.resolve_alias_chain(ret_type)
+        if PRIMITIVE_WIRE_SIZES.get(base) is not None:
+            return False
+        # Remaining named types that reach here are struct/union
+        # categories (interface returns don't occur by value).
+        return True
+
     # ------------------------------------------------------------------
     # Reply-payload sizing (used by templates and `_sizeof_pointer`)
     # ------------------------------------------------------------------
@@ -2002,10 +2028,23 @@ class Gen:
         """
         Generate the typedef and call for a default COM vtable call.
         Returns (pfn_name, typedef_str, call_args_str, vtable_index).
+
+        Aggregate returns use the COM x64 hidden-return-pointer ABI
+        (see `is_aggregate_return`): the typedef becomes
+        ``RET *(this, RET *ret, params...)`` and the call passes
+        ``&args.ret`` as the hidden pointer.  The dispatch template
+        discards the returned pointer (it aliases &args.ret).
         """
-        ret_type = self.ret_type_str(method.return_type)
+        aggregate = self.is_aggregate_return(method.return_type)
         param_types = ['void *']  # 'this' pointer
         param_names = ['args._self']
+
+        if aggregate:
+            ret_type = f'{method.return_type} *'
+            param_types.append(f'{method.return_type} *')
+            param_names.append('&args.ret')
+        else:
+            ret_type = self.ret_type_str(method.return_type)
 
         for p in method.params:
             c_decl = self.c_type(p)

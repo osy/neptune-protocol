@@ -89,6 +89,10 @@ def output_com_handle_params(method):
     return out
 
 def ret_type_str(method):
+    # Aggregate returns use the COM x64 hidden-return-pointer ABI: the
+    # thunk takes a `RET *_ret_out` right after `self` and returns it.
+    if GEN.is_aggregate_return(method.return_type):
+        return f'{method.return_type} *'
     return GEN.ret_type_str(method.return_type)
 
 def fallback_ret(method):
@@ -187,6 +191,7 @@ npt_${iface_lower}_default_Release(void *self)
     tname = thunk_name(iface.name, method.name)
     rt = ret_type_str(method)
     has_ret = GEN.has_return(method.return_type)
+    is_agg = GEN.is_aggregate_return(method.return_type)
     out_handles = output_com_handle_params(method)
     # Output COM handles are marshaled as guest-allocated ids in the
     # command body (no reply round-trip).  For the sync-vs-async
@@ -278,6 +283,9 @@ npt_${iface_lower}_default_Release(void *self)
 ${rt} NPT_STDMETHODCALLTYPE
 ${tname}(\
 void *self\
+% if is_agg:
+, ${method.return_type} *_ret_out\
+% endif
 % for p in method.params:
 , ${fmt_param_decl(p)}\
 % endfor
@@ -288,7 +296,10 @@ void *self\
     (void)${p.name};
 % endfor
     npt_com_assert_overridden("${iface.name}", "${method.name}");
-% if has_ret:
+% if is_agg:
+    if (_ret_out) memset(_ret_out, 0, sizeof(*_ret_out));
+    return _ret_out;
+% elif has_ret:
     return ${fallback_ret(method)};
 % endif
 }
@@ -297,6 +308,9 @@ void *self\
 ${rt} NPT_STDMETHODCALLTYPE
 ${tname}(\
 void *self\
+% if is_agg:
+, ${method.return_type} *_ret_out\
+% endif
 % for p in method.params:
 , ${fmt_param_decl(p)}\
 % endfor
@@ -414,7 +428,12 @@ ${a}${',' if i < len(call_args(method)) - 1 else ''}\
     }
 % endfor
 % endif
-% if has_ret:
+% if is_agg:
+    /* COM x64 aggregate-return ABI: copy into the caller's hidden
+     * return slot and hand the pointer back. */
+    if (_ret_out) *_ret_out = _ret;
+    return _ret_out;
+% elif has_ret:
 % if needs_sync:
     return _ret;
 % else:

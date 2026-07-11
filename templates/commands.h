@@ -292,6 +292,7 @@ ${GEN.encode_output_param(p, 'args->')}
 <%
     _d_ret = GEN.ret_type_str(method.return_type)
     _d_has_return = GEN.has_return(method.return_type)
+    _d_is_aggregate = GEN.is_aggregate_return(method.return_type)
     _d_overrides = f'ctx->{iface.name.lower()}_dispatch_overrides'
     _d_pfn_name, _d_typedef_str, _d_call_args, _d_vtable_idx = GEN.vtable_call_args(method, iface.name)
 %>\
@@ -328,7 +329,11 @@ ${' ' * (len('npt_dispatch_') + len(fname) + 1)}uint64_t object_id)
         ${_d_overrides}->${method.name}(ctx, &args, _original);
 % endif
     } else {
-% if _d_has_return:
+% if _d_is_aggregate:
+        /* COM x64 aggregate-return ABI: the hidden pointer (&args.ret)
+         * rides in the call args; the returned pointer aliases it. */
+        (void)_original(${_d_call_args});
+% elif _d_has_return:
         args.ret = _original(${_d_call_args});
 % else:
         _original(${_d_call_args});

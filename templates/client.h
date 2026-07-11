@@ -48,7 +48,14 @@ struct npt_device;
 def fmt_param_decl(p):
     return GEN.param_decl(p)
 def fmt_param_list(method):
+    # Aggregate returns use the COM x64 hidden-return-pointer ABI:
+    # the return value travels through a `RET *` inserted right after
+    # `self`, and the method returns that pointer.  This matches both
+    # MSVC C++ member functions and widl-generated C vtables (vkd3d,
+    # dxvk); a by-value slot here would corrupt the call.
     parts = ['void *self']
+    if GEN.is_aggregate_return(method.return_type):
+        parts.append(f'{method.return_type} *_ret_out')
     for p in method.params:
         parts.append(fmt_param_decl(p))
     return ', '.join(parts)
@@ -56,6 +63,8 @@ def thunk_name(iface_name, method_name):
     return GEN.thunk_name(iface_name, method_name)
 
 def ret_type(method):
+    if GEN.is_aggregate_return(method.return_type):
+        return f'{method.return_type} *'
     return GEN.ret_type_str(method.return_type)
 %>\
 

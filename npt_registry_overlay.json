@@ -103,13 +103,93 @@
       "name": "D3D12SerializeRootSignature",
       "primitive": "function",
       "group": 3,
-      "id": 3
+      "id": 3,
+      "params": [
+        {
+          "index": 2,
+          "name": "pBlobSize",
+          "type": "UINT",
+          "indirection": 1,
+          "handle": null,
+          "output": true,
+          "input": true,
+          "optional": false
+        },
+        {
+          "index": 3,
+          "name": "pBlobData",
+          "type": "void",
+          "indirection": 1,
+          "handle": null,
+          "output": true,
+          "input": false,
+          "optional": true,
+          "count": "pBlobSize"
+        },
+        {
+          "name": "pErrorBlobSize",
+          "type": "UINT",
+          "indirection": 1,
+          "output": true,
+          "input": true,
+          "optional": false
+        },
+        {
+          "name": "pErrorBlobData",
+          "type": "void",
+          "indirection": 1,
+          "output": true,
+          "input": false,
+          "optional": true,
+          "count": "pErrorBlobSize"
+        }
+      ]
     },
     {
       "name": "D3D12SerializeVersionedRootSignature",
       "primitive": "function",
       "group": 3,
-      "id": 4
+      "id": 4,
+      "params": [
+        {
+          "index": 1,
+          "name": "pBlobSize",
+          "type": "UINT",
+          "indirection": 1,
+          "handle": null,
+          "output": true,
+          "input": true,
+          "optional": false
+        },
+        {
+          "index": 2,
+          "name": "pBlobData",
+          "type": "void",
+          "indirection": 1,
+          "handle": null,
+          "output": true,
+          "input": false,
+          "optional": true,
+          "count": "pBlobSize"
+        },
+        {
+          "name": "pErrorBlobSize",
+          "type": "UINT",
+          "indirection": 1,
+          "output": true,
+          "input": true,
+          "optional": false
+        },
+        {
+          "name": "pErrorBlobData",
+          "type": "void",
+          "indirection": 1,
+          "output": true,
+          "input": false,
+          "optional": true,
+          "count": "pErrorBlobSize"
+        }
+      ]
     },
     {
       "name": "D3D11_OMAC",
@@ -332,6 +412,33 @@
       "name": "IDXGIFactory6",
       "methods": [
         {"name": "EnumAdapterByGpuPreference", "force_sync": true}
+      ]
+    },
+    {
+      "name": "ID3D12Resource",
+      "methods": [
+        {"name": "Map",                 "skip_default": true},
+        {"name": "Unmap",               "skip_default": true},
+        {"name": "WriteToSubresource",  "skip_default": true},
+        {"name": "ReadFromSubresource", "skip_default": true}
+      ]
+    },
+    {
+      "name": "ID3D12Device",
+      "methods": [
+        {"name": "CheckFeatureSupport", "skip_default": true}
+      ]
+    },
+    {
+      "name": "ID3D12Fence",
+      "methods": [
+        {"name": "SetEventOnCompletion", "skip_default": true}
+      ]
+    },
+    {
+      "name": "ID3D12GraphicsCommandList",
+      "methods": [
+        {"name": "Close", "force_sync": true}
       ]
     },
 
