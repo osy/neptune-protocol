@@ -93,6 +93,12 @@ class NptField:
     count_output: Optional[str] = None  # output count field name (for _Out_writes_to_)
     bitwidth: Optional[int] = None
     condition: Any = None    # str, bool, or None
+    # For an anonymous union the overlay lays over a member the vendor
+    # headers declare (D3D12_STATE_SUBOBJECT's `const void *pDesc`): the
+    # name of that member.  The union's arms exist only in Neptune's own
+    # headers, so generated code reaches them through this member's
+    # storage instead of naming them directly.
+    storage_member: Optional[str] = None
     value: Optional[int] = None  # for enum fields
     handle: Optional[str] = None  # 'com', 'win32', or None
     input: bool = True
@@ -442,6 +448,7 @@ def _parse_field(raw, parent_name=None, index=0):
         count_output=raw.get('count_output'),
         bitwidth=raw.get('bitwidth'),
         condition=raw.get('condition'),
+        storage_member=raw.get('storage_member'),
         value=raw.get('value'),
         handle=raw.get('handle'),
         input=raw.get('input', True),
@@ -810,6 +817,24 @@ class TypeRegistry:
                     f"indirection={field.indirection}) has count but no "
                     f"handle annotation in {context}; "
                     f"add handle='com' in the overlay")
+            # storage_member names the vendor-declared member an overlay
+            # union lays itself over.  That member is modelled as one of
+            # the union's own arms, so codegen can reach every other arm
+            # by reinterpreting its storage.
+            if field.storage_member:
+                if not (field.type_ref
+                        and field.type_ref.category == Category.UNION):
+                    raise ValueError(
+                        f"storage_member='{field.storage_member}' on "
+                        f"non-union field '{field.name}' in {context}; "
+                        f"only an anonymous union can overlay a member")
+                if not any(f.name == field.storage_member
+                           for f in field.type_ref.fields):
+                    raise ValueError(
+                        f"storage_member='{field.storage_member}' in "
+                        f"{context} names no arm of the union; the "
+                        f"vendor-declared member must appear as an arm "
+                        f"so its type and storage stay described")
 
         for ntype in self.types.values():
             ctx = ntype.name or '<anon>'

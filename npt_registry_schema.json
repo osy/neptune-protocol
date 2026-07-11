@@ -113,6 +113,10 @@
             { "type": "boolean" }
           ]
         },
+        "storage_member": {
+          "type": "string",
+          "description": "Only valid on an anonymous union field the overlay lays over a single member the vendor headers declare (e.g. D3D12_STATE_SUBOBJECT's 'const void *pDesc'). Names that member, which must also appear as one of the union's arms. Generated code reaches every arm by reinterpreting the member's storage, so it compiles against the vendor headers (which declare only the member) and against the protocol's own definitions alike."
+        },
         "value": {
           "type": "integer",
           "description": "For enum fields: the enum value"

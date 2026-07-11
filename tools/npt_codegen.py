@@ -35,6 +35,23 @@ _UNSIZED_RETURN = {
 }
 
 
+class _ArmPrefix(str):
+    """Accessor prefix for the arms of a storage-aliased anonymous union.
+
+    Reads as the accessor string it wraps (``((U *)&val->pDesc)->``) and
+    additionally carries ``sibling``, the accessor of the struct that
+    encloses the union.  Conditions and count expressions name members
+    of that enclosing struct rather than arms of the union, so they are
+    resolved against ``sibling`` — carried here instead of recovered
+    from the accessor text.
+    """
+
+    def __new__(cls, text, sibling):
+        obj = super().__new__(cls, text)
+        obj.sibling = sibling
+        return obj
+
+
 class Gen:
     """
     Core code generation helper.
@@ -113,7 +130,9 @@ class Gen:
         inner = self._anonymous_inner_fields(field)
         if inner is not None:
             if field.type_ref.category == Category.UNION:
-                return self._sizeof_anon_union(inner, prefix, dst, indent,
+                arm_prefix = self._anon_union_arm_prefix(field, prefix,
+                                                         const=True)
+                return self._sizeof_anon_union(inner, arm_prefix, dst, indent,
                                                for_output)
             return '\n'.join(self.sizeof_field(f, prefix, dst, indent,
                                                for_output) for f in inner)
@@ -187,7 +206,12 @@ class Gen:
         """Generate encode statement(s) for a field."""
         inner = self._anonymous_inner_fields(field)
         if inner is not None:
-            return '\n'.join(self.encode_field(f, prefix, indent, for_output)
+            arm_prefix = prefix
+            if field.type_ref.category == Category.UNION:
+                arm_prefix = self._anon_union_arm_prefix(field, prefix,
+                                                         const=True)
+            return '\n'.join(self.encode_field(f, arm_prefix, indent,
+                                               for_output)
                              for f in inner)
         lines = self._encode_field_impl(field, prefix, for_output)
         return self._wrap_condition(field, lines, prefix, indent)
@@ -204,7 +228,11 @@ class Gen:
         """
         inner = self._anonymous_inner_fields(field)
         if inner is not None:
-            return '\n'.join(self.decode_field(f, prefix, alloc_temp,
+            arm_prefix = prefix
+            if field.type_ref.category == Category.UNION:
+                arm_prefix = self._anon_union_arm_prefix(field, prefix,
+                                                         const=False)
+            return '\n'.join(self.decode_field(f, arm_prefix, alloc_temp,
                                                indent, inline_storage)
                              for f in inner)
         lines = self._decode_field_impl(field, prefix, alloc_temp, inline_storage)
@@ -622,6 +650,38 @@ class Gen:
         return None
 
     @staticmethod
+    def _anon_union_arm_prefix(field, prefix, const):
+        """Access prefix for the arms of an anonymous union field.
+
+        A union the vendor headers declare is reached as a plain member
+        (``val->Texture2D``).  A union the overlay lays over a single
+        vendor-declared member -- ``storage_member``, e.g.
+        D3D12_STATE_SUBOBJECT's ``const void *pDesc`` -- has arms that
+        exist only in Neptune's own headers, so generated code reaches
+        them by reinterpreting that member's storage:
+        ``((D3D12_STATE_SUBOBJECT__anon_1 *)&val->pDesc)->pHitGroup``.
+        The member itself is one of the arms (the registry validates
+        that), and the __anon_N typedef is emitted on every platform, so
+        the same code compiles against the vendor headers and against
+        the protocol's own definitions."""
+        if not field.storage_member:
+            return prefix
+        c = 'const ' if const else ''
+        return _ArmPrefix(
+            f'(({c}{field.type_ref.name} *)&{prefix}{field.storage_member})->',
+            prefix)
+
+    @staticmethod
+    def _sibling_prefix(prefix):
+        """Prefix for a field's siblings.
+
+        Conditions and count expressions name siblings of the field they
+        annotate.  Inside a storage-aliased union those siblings live in
+        the ENCLOSING struct, whose accessor the arm prefix carries
+        along; every other prefix is already its own sibling accessor."""
+        return getattr(prefix, 'sibling', prefix)
+
+    @staticmethod
     def _acc(field, prefix):
         """C accessor expression for a field (e.g. 'val->Foo' or 'val')."""
         return f'{prefix}{field.name}' if field.name else prefix.rstrip('.')
@@ -657,6 +717,7 @@ class Gen:
     def _get_count_expr(self, field, prefix):
         """Get the C expression for the array count of a pointer field.
         Returns the expression string, or None if the count is unknown."""
+        prefix = self._sibling_prefix(prefix)
         size = field.count
         if size is None:
             return None
@@ -686,6 +747,7 @@ class Gen:
 
     def _get_output_count_expr(self, field, prefix):
         """Get the output count expression from the count_output field."""
+        prefix = self._sibling_prefix(prefix)
         if field.count_output:
             deref = field._size_output_deref
             if deref < 0:
@@ -1720,6 +1782,7 @@ class Gen:
 
     def _wrap_condition(self, field, lines, prefix, indent):
         """Wrap generated lines in a condition check if field has one."""
+        prefix = self._sibling_prefix(prefix)
         if not lines:
             return ''
 
@@ -1750,8 +1813,12 @@ class Gen:
         """
         inner = self._anonymous_inner_fields(field)
         if inner is not None:
+            arm_prefix = prefix
+            if field.type_ref.category == Category.UNION:
+                arm_prefix = self._anon_union_arm_prefix(field, prefix,
+                                                         const=False)
             return '\n'.join(p for p in
-                             (self.replace_handle_field(f, prefix, indent)
+                             (self.replace_handle_field(f, arm_prefix, indent)
                               for f in inner) if p)
         lines = self._replace_handle_field_impl(field, prefix)
         return self._wrap_condition(field, lines, prefix, indent)

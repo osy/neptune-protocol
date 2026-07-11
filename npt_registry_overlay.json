@@ -1027,6 +1027,7 @@
           "name": null,
           "indirection": 0,
           "const": false,
+          "storage_member": "pDesc",
           "type": {
             "primitive": "union",
             "fields": [
