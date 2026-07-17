@@ -122,7 +122,7 @@
         "optional": { "type": "boolean", "default": false, "description": "True for *_opt_ params" },
         "handle": {
           "type": ["string", "null"],
-          "enum": [null, "com", "win32"],
+          "enum": [null, "com", "win32", "event"],
           "default": null,
           "description": "Type of handle"
         },

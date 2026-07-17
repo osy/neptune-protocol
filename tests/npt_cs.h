@@ -323,6 +323,16 @@ npt_win32_handle_replace(struct npt_dispatch_context *ctx,
    return NULL;
 }
 
+/* Event HANDLEs (handle="event" in the overlay) use a distinct replace hook
+ * that maps an unregistered id to NULL rather than the identity fallback. */
+static inline void *
+npt_event_handle_replace(struct npt_dispatch_context *ctx,
+                         npt_object_id id)
+{
+   (void)ctx; (void)id;
+   return NULL;
+}
+
 static inline npt_object_id
 npt_object_get_id(const void *handle)
 {

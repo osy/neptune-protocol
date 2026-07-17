@@ -1030,7 +1030,8 @@ class Gen:
             else:
                 # Value-type COM handle: cast through uintptr_t to a void *
                 return [f'npt_encode_com_handle(enc, npt_object_get_id((const void *)(uintptr_t){acc}));']
-        elif field.is_win32_handle:
+        elif field.is_win32_handle or field.is_event_handle:
+            # Event handles are wire-identical to win32 handles.
             if field.indirection >= 1:
                 # Pointer to handle: dereference to get the handle value
                 return [f'npt_encode_win32_handle(enc, npt_win32_handle_get_id((const void *)(uintptr_t)*{acc}));']
@@ -1265,7 +1266,8 @@ class Gen:
             # Value-type COM handle: same convert-via-hook pattern
             return self._decode_id_block(
                 [f'{acc} = ({field.type_name})(uintptr_t)npt_object_from_id(_id);'])
-        elif field.is_win32_handle:
+        elif field.is_win32_handle or field.is_event_handle:
+            # Event handles are wire-identical to win32 handles on decode.
             if field.indirection >= 1 and field.output:
                 # Output handle pointer: decode into *pHandle via project hook.
                 return self._decode_id_block([
@@ -1756,14 +1758,18 @@ class Gen:
             return [f'{acc} = (uintptr_t)npt_cs_handle_lookup(ctx, '
                     f'(npt_object_id){acc}, {obj_type});']
 
-        # Win32 handle field
-        if field.is_win32_handle:
+        # Win32 handle field (event handles share the same wire form but use a
+        # distinct replace hook: npt_event_handle_replace maps an unregistered
+        # id to NULL, whereas npt_win32_handle_replace falls back to identity).
+        if field.is_win32_handle or field.is_event_handle:
             if field.output and not field.input:
                 return []  # output-only handles don't need replacement
+            replace_fn = ('npt_event_handle_replace' if field.is_event_handle
+                          else 'npt_win32_handle_replace')
             if field.indirection >= 1:
-                return [f'{acc} = npt_win32_handle_replace(ctx, '
+                return [f'{acc} = {replace_fn}(ctx, '
                         f'(npt_object_id)(uintptr_t){acc});']
-            return [f'{acc} = ({field.type_name})(uintptr_t)npt_win32_handle_replace(ctx, '
+            return [f'{acc} = ({field.type_name})(uintptr_t){replace_fn}(ctx, '
                     f'(npt_object_id){acc});']
 
         # Interface ref without explicit handle annotation

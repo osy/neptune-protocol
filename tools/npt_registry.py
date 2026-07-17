@@ -111,7 +111,7 @@ class NptField:
 
     @property
     def is_handle(self):
-        return self.handle in ('com', 'win32')
+        return self.handle in ('com', 'win32', 'event')
 
     @property
     def is_com_handle(self):
@@ -120,6 +120,13 @@ class NptField:
     @property
     def is_win32_handle(self):
         return self.handle == 'win32'
+
+    @property
+    def is_event_handle(self):
+        # Event HANDLEs are wire-identical to win32 handles; they differ only
+        # in the host-side replace hook (npt_event_handle_replace maps an
+        # unregistered id to NULL instead of the identity fallback).
+        return self.handle == 'event'
 
     @property
     def is_blob(self):

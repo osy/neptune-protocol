@@ -41,6 +41,13 @@
  *                                        void *obj, npt_object_type type)
  *   void *npt_win32_handle_replace(struct npt_dispatch_context *ctx,
  *                                  npt_object_id id)
+ *   void *npt_event_handle_replace(struct npt_dispatch_context *ctx,
+ *                                  npt_object_id id)
+ *
+ *   npt_event_handle_replace is used for event HANDLEs (annotated
+ *   handle="event" in the overlay): unlike npt_win32_handle_replace, an
+ *   unregistered id must map to NULL rather than the identity fallback, so a
+ *   guest that skipped REGISTER_EVENT cannot hand a raw token to the backend.
  *
  *   The host implementation of npt_*_from_id is typically a no-op cast
  *   ((void *)(uintptr_t)id), since the host needs the raw ID stored in

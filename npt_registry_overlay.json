@@ -137,6 +137,128 @@
       ]
     },
     {
+      "name": "ID3D11Device4",
+      "methods": [
+        {
+          "name": "RegisterDeviceRemovedEvent",
+          "params": [
+            { "name": "hEvent", "handle": "event" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ID3D11DeviceContext3",
+      "methods": [
+        {
+          "name": "Flush1",
+          "params": [
+            { "name": "hEvent", "handle": "event" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ID3D11Fence",
+      "methods": [
+        {
+          "name": "SetEventOnCompletion",
+          "params": [
+            { "name": "hEvent", "handle": "event" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ID3D12Device1",
+      "methods": [
+        {
+          "name": "SetEventOnMultipleFenceCompletion",
+          "params": [
+            { "name": "hEvent", "handle": "event" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ID3D12Fence",
+      "methods": [
+        {
+          "name": "SetEventOnCompletion",
+          "params": [
+            { "name": "hEvent", "handle": "event" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ID3D12Device6",
+      "methods": [
+        {
+          "name": "SetBackgroundProcessingMode",
+          "params": [
+            { "name": "hEventToSignalUponCompletion", "handle": "event" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IDXGIAdapter3",
+      "methods": [
+        {
+          "name": "RegisterHardwareContentProtectionTeardownStatusEvent",
+          "params": [
+            { "name": "hEvent", "handle": "event" }
+          ]
+        },
+        {
+          "name": "RegisterVideoMemoryBudgetChangeNotificationEvent",
+          "params": [
+            { "name": "hEvent", "handle": "event" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IDXGIDevice2",
+      "methods": [
+        {
+          "name": "EnqueueSetEvent",
+          "params": [
+            { "name": "hEvent", "handle": "event" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IDXGIFactory2",
+      "methods": [
+        {
+          "name": "RegisterStereoStatusEvent",
+          "params": [
+            { "name": "hEvent", "handle": "event" }
+          ]
+        },
+        {
+          "name": "RegisterOcclusionStatusEvent",
+          "params": [
+            { "name": "hEvent", "handle": "event" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IDXGIFactory7",
+      "methods": [
+        {
+          "name": "RegisterAdaptersChangedEvent",
+          "params": [
+            { "name": "hEvent", "handle": "event" }
+          ]
+        }
+      ]
+    },
+    {
       "name": "IDXGIOutput3",
       "methods": [
         {
