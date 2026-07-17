@@ -2027,4 +2027,4 @@ class Gen:
         ret_type = self.ret_type_str(func.return_type)
         param_types = [self.c_type(p) for p in func.params] or ['void']
         pfn_name = self.function_pfn_typedef_name(func.name)
-        return f'typedef {ret_type} (*{pfn_name})({", ".join(param_types)})'
+        return f'typedef {ret_type} (NPT_STDMETHODCALLTYPE *{pfn_name})({", ".join(param_types)})'

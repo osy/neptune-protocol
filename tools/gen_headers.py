@@ -187,6 +187,8 @@ class HeaderWriter:
         self.writeln('#ifndef NPT_STDMETHODCALLTYPE')
         self.writeln('#  if defined(_WIN32)')
         self.writeln('#    define NPT_STDMETHODCALLTYPE __stdcall')
+        self.writeln('#  elif defined(__APPLE__) && defined(__x86_64__)')
+        self.writeln('#    define NPT_STDMETHODCALLTYPE __attribute__((ms_abi))')
         self.writeln('#  else')
         self.writeln('#    define NPT_STDMETHODCALLTYPE')
         self.writeln('#  endif')
