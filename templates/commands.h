@@ -225,9 +225,14 @@ npt_decode_${fname}_args_temp(struct npt_cs_decoder *dec,
 ${' ' * (len('npt_decode_') + len(fname) + len('_args_temp') + 1)}struct npt_command_${fname} *args)
 {
     /* Decode input parameters from the wire */
+<% GEN.begin_decode() %>\
 % for p in method.params:
 ${GEN.decode_input_param(p, 'args->')}
 % endfor
+<% _count_checks = GEN.counted_array_checks() %>\
+% if _count_checks:
+${_count_checks}
+% endif
     /* Allocate temp storage for output-only parameters */
 % for p in method.params:
 ${GEN.alloc_output_param(p, 'args->')}
@@ -648,9 +653,14 @@ npt_decode_${fname}_args_temp(struct npt_cs_decoder *dec,
 ${' ' * (len('npt_decode_') + len(fname) + len('_args_temp') + 1)}struct npt_command_${fname} *args)
 {
     /* Decode input parameters from the wire */
+<% GEN.begin_decode() %>\
 % for p in func.params:
 ${GEN.decode_input_param(p, 'args->')}
 % endfor
+<% _count_checks = GEN.counted_array_checks() %>\
+% if _count_checks:
+${_count_checks}
+% endif
     /* Allocate temp storage for output-only parameters */
 % for p in func.params:
 ${GEN.alloc_output_param(p, 'args->')}

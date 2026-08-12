@@ -67,6 +67,52 @@ class Gen:
         self._context = ''  # current struct/method name for warnings
         # Dedup for `_warn_unsupported`: (method_name, type_name, where).
         self._unsupported_seen: set = set()
+        # Counted input arrays decoded so far in the command currently being
+        # emitted, as (wire-count variable, count expression) pairs.
+        self._counted_arrays: list = []
+
+    # ------------------------------------------------------------------
+    # Counted-array bounds checks
+    # ------------------------------------------------------------------
+
+    def begin_decode(self):
+        """Start a command's input-decode block."""
+        self._counted_arrays = []
+        return ''
+
+    def _count_var(self, field):
+        """Wire-count variable for a counted input array, registered for the
+        bounds check emitted once every parameter has been decoded."""
+        return f'_cnt_{field.name}'
+
+    def _register_counted_array(self, field, count_expr):
+        self._counted_arrays.append((self._count_var(field), count_expr))
+
+    def counted_array_checks(self, indent: int = 1) -> str:
+        """Bounds-check every counted input array against the expression the
+        callee will walk.
+
+        The element count travels on the wire, but the callee reads as many
+        elements as the count expression evaluates to, and that expression is
+        built from other parameters -- which the sender controls
+        independently.  A short array would be read past its end.  The check
+        runs here rather than at the array itself because the expression may
+        name parameters that decode later.  A zero count is the encoder's
+        NULL, which the callee is expected to handle."""
+        if not self._counted_arrays:
+            return ''
+        ind = '    ' * indent
+        lines = [f'{ind}/* A counted array must carry every element the callee'
+                 f' will read. */']
+        for var, expr in self._counted_arrays:
+            lines += [
+                f'{ind}if ({var} && {var} < (uint64_t)({expr})) {{',
+                f'{ind}    npt_cs_decoder_set_fatal(dec);',
+                f'{ind}    return;',
+                f'{ind}}}',
+            ]
+        self._counted_arrays = []
+        return '\n'.join(lines)
 
     def set_context(self, ctx: str):
         """Set the current context (struct/method name) for warning messages."""
@@ -218,13 +264,20 @@ class Gen:
 
     def decode_field(self, field: NptField, prefix: str,
                      alloc_temp: bool = True, indent: int = 1,
-                     inline_storage: bool = True) -> str:
+                     inline_storage: bool = True,
+                     is_param: bool = False) -> str:
         """Generate decode statement(s) for a field.
 
         ``inline_storage`` controls whether fixed-size arrays at indirection 0
         should be written into inline storage (struct fields) or allocated
         from the temp pool first (command args, where ``c_type`` produces a
         pointer instead).
+
+        ``is_param`` marks a command parameter, as opposed to a field inside a
+        struct being decoded from the same stream.  A parameter decoder may
+        abandon the stream on a malformed value, because the command is
+        already lost; a struct decoder may not, because the fields after it
+        still have to be consumed to keep the stream aligned.
         """
         inner = self._anonymous_inner_fields(field)
         if inner is not None:
@@ -233,9 +286,11 @@ class Gen:
                 arm_prefix = self._anon_union_arm_prefix(field, prefix,
                                                          const=False)
             return '\n'.join(self.decode_field(f, arm_prefix, alloc_temp,
-                                               indent, inline_storage)
+                                               indent, inline_storage,
+                                               is_param)
                              for f in inner)
-        lines = self._decode_field_impl(field, prefix, alloc_temp, inline_storage)
+        lines = self._decode_field_impl(field, prefix, alloc_temp,
+                                        inline_storage, is_param)
         return self._wrap_condition(field, lines, prefix, indent)
 
     def is_output_com_handle(self, field: NptField) -> bool:
@@ -363,7 +418,7 @@ class Gen:
         if not field.input:
             return ''
         return self.decode_field(field, prefix, alloc_temp=True, indent=indent,
-                                 inline_storage=False)
+                                 inline_storage=False, is_param=True)
 
     def alloc_output_param(self, field: NptField, prefix: str,
                            indent: int = 1) -> str:
@@ -1286,7 +1341,8 @@ class Gen:
     # Internal: decode generation
     # ------------------------------------------------------------------
 
-    def _decode_field_impl(self, field, prefix, alloc_temp, inline_storage=True):
+    def _decode_field_impl(self, field, prefix, alloc_temp,
+                           inline_storage=True, is_param=False):
         acc = self._acc(field, prefix)
 
         if field.is_non_serializable:
@@ -1296,7 +1352,8 @@ class Gen:
         # array); Win32 handle arrays fall through to the unsized check.
         if field.is_handle and (field.is_com_handle
                                 or not (field.indirection >= 2 and field.count)):
-            return self._decode_handle(field, acc, prefix, alloc_temp)
+            return self._decode_handle(field, acc, prefix, alloc_temp,
+                                       is_param)
 
         if field.indirection >= 1 and self.reg.is_interface_type(field.type_name):
             return [f'npt_decode_com_handle(dec, (npt_object_id *)&{acc});']
@@ -1322,7 +1379,8 @@ class Gen:
             return self._decode_blob(field, acc, alloc_temp)
 
         if field.indirection >= 1:
-            return self._decode_pointer(field, acc, prefix, alloc_temp)
+            return self._decode_pointer(field, acc, prefix, alloc_temp,
+                                        is_param)
 
         return self._unmatched_warn(field, 'decode')
 
@@ -1342,11 +1400,13 @@ class Gen:
             '}',
         ]
 
-    def _decode_handle(self, field, acc, prefix, alloc_temp):
+    def _decode_handle(self, field, acc, prefix, alloc_temp,
+                       is_param=False):
         if field.is_com_handle:
             if field.indirection == 2:
                 # Both input and output arrays go through the COM handle path
-                return self._decode_output_com_handle(field, acc, alloc_temp, prefix)
+                return self._decode_output_com_handle(field, acc, alloc_temp,
+                                                      prefix, is_param)
             if field.indirection >= 1:
                 # Input pointer handle: decode wire ID and convert via project
                 # hook. On host (alloc_temp=True), acc is `args->Foo`. The
@@ -1376,7 +1436,8 @@ class Gen:
                 [f'{acc} = ({field.type_name})(uintptr_t)npt_win32_handle_from_id(_id);'])
         return [f'/* unknown handle type for {field.name} */']
 
-    def _decode_output_com_handle(self, field, acc, alloc_temp, prefix=''):
+    def _decode_output_com_handle(self, field, acc, alloc_temp, prefix='',
+                                  is_param=False):
         """Decode for a double-pointer COM handle (void** or Interface**).
 
         Despite the name, this is also reached for INPUT arrays of COM
@@ -1392,20 +1453,37 @@ class Gen:
                 if field.input:
                     # INPUT array — wire format: array_count, then N handle ids.
                     # Encoder writes 0 when the input pointer is NULL.
+                    if not is_param:
+                        return [
+                            f'{{',
+                            f'    const uint64_t _count = npt_decode_array_count_unchecked(dec);',
+                            f'    if (_count) {{',
+                            f'        {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof(void *), _count);',
+                            f'        if (!{acc}) return;',
+                            f'        for (uint64_t _i = 0; _i < _count; _i++) {{',
+                            f'            npt_object_id _id;',
+                            f'            npt_decode_uint64_t(dec, &_id);',
+                            f'            {acc}[_i] = npt_object_from_id(_id);',
+                            f'        }}',
+                            f'    }} else {{',
+                            f'        {acc} = NULL;',
+                            f'    }}',
+                            f'}}',
+                        ]
+                    cnt = self._count_var(field)
+                    self._register_counted_array(field, count_expr)
                     return [
-                        f'{{',
-                        f'    const uint64_t _count = npt_decode_array_count_unchecked(dec);',
-                        f'    if (_count) {{',
-                        f'        {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof(void *), _count);',
-                        f'        if (!{acc}) return;',
-                        f'        for (uint64_t _i = 0; _i < _count; _i++) {{',
-                        f'            npt_object_id _id;',
-                        f'            npt_decode_uint64_t(dec, &_id);',
-                        f'            {acc}[_i] = npt_object_from_id(_id);',
-                        f'        }}',
-                        f'    }} else {{',
-                        f'        {acc} = NULL;',
+                        f'uint64_t {cnt} = npt_decode_array_count_unchecked(dec);',
+                        f'if ({cnt}) {{',
+                        f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof(void *), {cnt});',
+                        f'    if (!{acc}) return;',
+                        f'    for (uint64_t _i = 0; _i < {cnt}; _i++) {{',
+                        f'        npt_object_id _id;',
+                        f'        npt_decode_uint64_t(dec, &_id);',
+                        f'        {acc}[_i] = npt_object_from_id(_id);',
                         f'    }}',
+                        f'}} else {{',
+                        f'    {acc} = NULL;',
                         f'}}',
                     ]
                 # OUTPUT-only array — alloc empty slots for the COM call to fill
@@ -1525,7 +1603,31 @@ class Gen:
                 f'}}',
             ]
 
-    def _decode_pointer(self, field, acc, prefix, alloc_temp):
+    def _decode_array_unchecked(self, field, acc, base, count_expr):
+        """Counted array inside a struct: the wire count is used as-is."""
+        if base in PRIMITIVE_NAMES or field.is_enum:
+            elem = [f'    npt_decode_{field.type_name}_array(dec, '
+                    f'({field.type_name} *){acc}, _count);']
+        else:
+            elem = [f'    for (uint32_t _i = 0; _i < (uint32_t)_count; _i++)',
+                    f'        npt_decode_{field.type_name}(dec, '
+                    f'({field.type_name} *)&{acc}[_i]);']
+        return [
+            f'if (npt_peek_array_count(dec)) {{',
+            f'    const uint64_t _count = npt_decode_array_count_unchecked(dec);',
+            f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, '
+            f'sizeof({field.type_name}), _count);',
+            f'    if (!{acc}) return;',
+            *elem,
+            f'}} else {{',
+            f'    (void)npt_decode_array_count_unchecked(dec); /* consume the 0 */',
+            f'    (void)({count_expr}); /* unused: count_expr from registry */',
+            f'    {acc} = NULL;',
+            f'}}',
+        ]
+
+    def _decode_pointer(self, field, acc, prefix, alloc_temp,
+                        is_param=False):
         count_expr = self._get_count_expr(field, prefix)
 
         # T**+count where T is a struct/union: allocate N inner-pointer
@@ -1559,6 +1661,10 @@ class Gen:
                 null_lines = [f'    {acc} = NULL;']
                 if not field.optional:
                     null_lines.append(f'    npt_cs_decoder_set_fatal(dec); /* non-optional pointer is NULL */')
+                    if is_param:
+                        # Stop rather than only flag: the output-sizing code
+                        # after the parameters dereferences these pointers.
+                        null_lines.append(f'    return;')
                 return [
                     f'if (npt_decode_simple_pointer(dec)) {{',
                     f'    {acc} = npt_cs_decoder_alloc_temp(dec, sizeof({field.type_name}));',
@@ -1583,33 +1689,35 @@ class Gen:
             # registry's count_expr because callers may legitimately pass NULL
             # even when the descriptor says non-zero (e.g., D3D11 textures
             # with no initial data).
+            if not is_param:
+                return self._decode_array_unchecked(field, acc, base,
+                                                    count_expr)
+            cnt = self._count_var(field)
+            self._register_counted_array(field, count_expr)
             if base in PRIMITIVE_NAMES or field.is_enum:
-                return [
-                    f'if (npt_peek_array_count(dec)) {{',
-                    f'    const uint64_t _count = npt_decode_array_count_unchecked(dec);',
-                    f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name}), _count);',
-                    f'    if (!{acc}) return;',
-                    f'    npt_decode_{field.type_name}_array(dec, ({field.type_name} *){acc}, _count);',
-                    f'}} else {{',
-                    f'    (void)npt_decode_array_count_unchecked(dec); /* consume the 0 */',
-                    f'    (void)({count_expr}); /* unused: count_expr from registry */',
-                    f'    {acc} = NULL;',
-                    f'}}',
+                elem = [
+                    f'    npt_decode_{field.type_name}_array(dec, '
+                    f'({field.type_name} *){acc}, {cnt});',
                 ]
             else:
-                return [
-                    f'if (npt_peek_array_count(dec)) {{',
-                    f'    const uint64_t _count = npt_decode_array_count_unchecked(dec);',
-                    f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name}), _count);',
-                    f'    if (!{acc}) return;',
-                    f'    for (uint32_t _i = 0; _i < (uint32_t)_count; _i++)',
-                    f'        npt_decode_{field.type_name}(dec, ({field.type_name} *)&{acc}[_i]);',
-                    f'}} else {{',
-                    f'    (void)npt_decode_array_count_unchecked(dec); /* consume the 0 */',
-                    f'    (void)({count_expr}); /* unused: count_expr from registry */',
-                    f'    {acc} = NULL;',
-                    f'}}',
+                elem = [
+                    f'    for (uint32_t _i = 0; _i < (uint32_t){cnt}; _i++)',
+                    f'        npt_decode_{field.type_name}(dec, '
+                    f'({field.type_name} *)&{acc}[_i]);',
                 ]
+            return [
+                f'uint64_t {cnt} = 0;',
+                f'if (npt_peek_array_count(dec)) {{',
+                f'    {cnt} = npt_decode_array_count_unchecked(dec);',
+                f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, '
+                f'sizeof({field.type_name}), {cnt});',
+                f'    if (!{acc}) return;',
+                *elem,
+                f'}} else {{',
+                f'    (void)npt_decode_array_count_unchecked(dec); /* consume the 0 */',
+                f'    {acc} = NULL;',
+                f'}}',
+            ]
         else:
             if base in PRIMITIVE_NAMES or field.is_enum:
                 return [
