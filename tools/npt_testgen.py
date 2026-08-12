@@ -522,6 +522,43 @@ def _resolve_size_term(term, prefix, fields_map):
     return f'{"*" * deref}{prefix}{term}'
 
 
+def _is_size_term(term, fields_map):
+    """True when _resolve_size_term can resolve this term on its own."""
+    term = term.strip()
+    return (term.isdigit() or term.startswith('sizeof(') or '->' in term
+            or term in fields_map)
+
+
+# An identifier NOT reached through '->' or '.' (those name a member of
+# something already resolved, not a sibling).
+_COUNT_IDENT_RE = re.compile(r'(?<![\w.])(?<!->)([A-Za-z_]\w*)')
+
+
+def _bind_count_expr(expr, prefix, fields_map):
+    """Bind the sibling references in a count that is a C expression.
+
+    Counts are normally a bare field reference, which _resolve_size_term
+    handles.  Where the element count is not expressible that way -- D3D12
+    OMSetRenderTargets marshals one descriptor when
+    RTsSingleHandleToDescriptorRange says the handle starts a contiguous
+    range, else NumRenderTargetDescriptors of them -- the count is a C
+    expression over siblings.  Identifiers naming no sibling are global
+    constants and stay untouched.  Returns None when nothing was bound, so
+    the caller keeps the bare-reference path."""
+    bound = False
+
+    def bind(m):
+        nonlocal bound
+        name = m.group(1)
+        if name not in fields_map:
+            return name
+        bound = True
+        return '*' * fields_map[name] + prefix + name
+
+    out = _COUNT_IDENT_RE.sub(bind, expr)
+    return out if bound else None
+
+
 def _build_fields_map(fields, reg):
     """Build map field_name -> indirection for fields accessible as siblings."""
     fmap = {}
@@ -554,6 +591,10 @@ def get_count_expr(field, prefix, fields_map):
         if parsed.isdigit():
             return parsed
         terms = [t.strip() for t in parsed.split('*')]
+        if not all(_is_size_term(t, fields_map) for t in terms):
+            bound = _bind_count_expr(parsed, prefix, fields_map)
+            if bound is not None:
+                return bound
         c_terms = [_resolve_size_term(t, prefix, fields_map) for t in terms]
         return ' * '.join(c_terms)
     return None

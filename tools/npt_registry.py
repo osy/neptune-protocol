@@ -114,6 +114,12 @@ class NptField:
     # the codegen must guard every `*pCount` with `(pCount ? *pCount : 0)`.
     _size_optional: bool = False
     _size_output_optional: bool = False
+    # Computed: for a count that is a C expression rather than a bare field
+    # reference (e.g. D3D12 OMSetRenderTargets' conditional descriptor
+    # count), the expression with every sibling reference replaced by the
+    # literal '{prefix}' so the codegen can bind it to the accessor in
+    # scope.  None when the count is a bare reference.
+    _size_expr: Optional[str] = None
 
     @property
     def is_handle(self):
@@ -393,6 +399,10 @@ def uuid_to_guid_init(uuid_str):
 # ---------------------------------------------------------------------------
 
 _INEXPRESSIBLE_RE = re.compile(r'^_Inexpressible_\((.+)\)$')
+
+# An identifier NOT reached through '->' or '.' (those name a member of
+# something already resolved, not a sibling).
+_COUNT_IDENT_RE = re.compile(r'(?<![\w.])(?<!->)([A-Za-z_]\w*)')
 
 
 def parse_count_expr(count_str):
@@ -900,11 +910,53 @@ class TypeRegistry:
                         return -1, False  # unknown term
                 return max_deref, any_optional
 
+            def _count_expr_template(s):
+                """Bind a count that is a C expression to its siblings.
+
+                A count is normally a bare field reference, which
+                _resolve_count_str resolves on its own.  Where the element
+                count is not expressible that way -- D3D12
+                OMSetRenderTargets marshals one descriptor when
+                RTsSingleHandleToDescriptorRange says the handle starts a
+                contiguous range, else NumRenderTargetDescriptors of them
+                -- the count is a C expression over siblings instead.
+
+                Returns the expression with every sibling reference
+                replaced by '{prefix}<derefs><name>', for the codegen to
+                bind to whatever accessor is in scope (nothing for a
+                command parameter, 'args->' inside a decoded command,
+                'val->' inside a struct).  Identifiers naming no sibling
+                are global constants and stay untouched.  Returns None
+                when the expression references no sibling at all, leaving
+                such counts to the bare-reference path."""
+                parsed = parse_count_expr(s)
+                if parsed is None:
+                    return None
+                seen = False
+
+                def bind(m):
+                    nonlocal seen
+                    name = m.group(1)
+                    if name not in field_map:
+                        return name
+                    ind, _opt = field_map[name]
+                    if ind > 1:
+                        raise ValueError(
+                            f"count field '{name}' has indirection {ind} "
+                            f"(expected 0 or 1)")
+                    seen = True
+                    return '*' * ind + '{prefix}' + name
+
+                bound = _COUNT_IDENT_RE.sub(bind, parsed)
+                return bound if seen else None
+
             def set_derefs(flist):
                 for f in flist:
                     if isinstance(f.count, str):
                         f._size_deref, f._size_optional = \
                             _resolve_count_str(f.count)
+                        if f._size_deref < 0:
+                            f._size_expr = _count_expr_template(f.count)
                     if f.count_output:
                         if f.count_output in field_map:
                             ind, opt = field_map[f.count_output]

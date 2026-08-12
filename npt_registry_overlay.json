@@ -438,7 +438,17 @@
     {
       "name": "ID3D12GraphicsCommandList",
       "methods": [
-        {"name": "Close", "force_sync": true}
+        {"name": "Close", "force_sync": true},
+        {
+          "name": "OMSetRenderTargets",
+          "params": [
+            {
+              "name": "pRenderTargetDescriptors",
+              "index": 1,
+              "count": "RTsSingleHandleToDescriptorRange ? 1 : NumRenderTargetDescriptors"
+            }
+          ]
+        }
       ]
     },
 

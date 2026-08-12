@@ -722,6 +722,11 @@ class Gen:
         if size is None:
             return None
 
+        # A count that is a C expression over siblings rather than a bare
+        # field reference: the registry already bound the sibling names.
+        if field._size_expr is not None:
+            return field._size_expr.replace('{prefix}', prefix)
+
         if isinstance(size, int):
             return str(size)
 
