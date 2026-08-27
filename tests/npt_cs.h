@@ -200,6 +200,13 @@ npt_cs_decoder_get_fatal(const struct npt_cs_decoder *dec)
    return false;
 }
 
+static inline bool
+npt_cs_decoder_take_handle_miss(struct npt_cs_decoder *dec)
+{
+   (void)dec;
+   return false;
+}
+
 static inline void *
 npt_cs_decoder_alloc_temp(struct npt_cs_decoder *dec, size_t size)
 {
