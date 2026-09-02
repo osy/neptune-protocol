@@ -426,7 +426,27 @@
     {
       "name": "ID3D12Device",
       "methods": [
-        {"name": "CheckFeatureSupport", "skip_default": true}
+        {"name": "CheckFeatureSupport", "skip_default": true},
+        {"name": "CreateConstantBufferView", "staged": true},
+        {"name": "CreateShaderResourceView", "staged": true},
+        {"name": "CreateUnorderedAccessView", "staged": true},
+        {"name": "CreateRenderTargetView", "staged": true},
+        {"name": "CreateDepthStencilView", "staged": true},
+        {"name": "CreateSampler", "staged": true},
+        {"name": "CopyDescriptors", "staged": true},
+        {"name": "CopyDescriptorsSimple", "staged": true}
+      ]
+    },
+    {
+      "name": "ID3D12Device8",
+      "methods": [
+        {"name": "CreateSamplerFeedbackUnorderedAccessView", "staged": true}
+      ]
+    },
+    {
+      "name": "ID3D12Device11",
+      "methods": [
+        {"name": "CreateSampler2", "staged": true}
       ]
     },
     {
@@ -437,6 +457,7 @@
     },
     {
       "name": "ID3D12GraphicsCommandList",
+      "staged_methods": true,
       "methods": [
         {"name": "Close", "force_sync": true},
         {
@@ -451,6 +472,16 @@
         }
       ]
     },
+    {"name": "ID3D12GraphicsCommandList1", "staged_methods": true},
+    {"name": "ID3D12GraphicsCommandList2", "staged_methods": true},
+    {"name": "ID3D12GraphicsCommandList3", "staged_methods": true},
+    {"name": "ID3D12GraphicsCommandList4", "staged_methods": true},
+    {"name": "ID3D12GraphicsCommandList5", "staged_methods": true},
+    {"name": "ID3D12GraphicsCommandList6", "staged_methods": true},
+    {"name": "ID3D12GraphicsCommandList7", "staged_methods": true},
+    {"name": "ID3D12GraphicsCommandList8", "staged_methods": true},
+    {"name": "ID3D12GraphicsCommandList9", "staged_methods": true},
+    {"name": "ID3D12GraphicsCommandList10", "staged_methods": true},
 
     {
       "name": "D3D11_SHADER_RESOURCE_VIEW_DESC",

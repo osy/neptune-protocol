@@ -497,6 +497,9 @@ ${p.name}${',' if i < len(all_params) - 1 else ''}\
         : 0;
 
     struct npt_cs_encoder *enc = npt_ring_submit_command_init(ring, submit, cmd_data, cmd_size, reply_size);
+% if GEN.method_is_staged(iface, method):
+    submit->staged = true;
+% endif
     if (cmd_size) {
         npt_encode_${fname}(enc, cmd_flags, object_id\
 % for p in all_params:

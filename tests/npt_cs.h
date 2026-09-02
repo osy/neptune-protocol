@@ -253,6 +253,7 @@ struct npt_ring_submit_command {
    size_t reply_size;
    struct npt_cs_encoder enc;
    struct npt_cs_decoder dec;
+   bool staged;
 };
 
 static inline struct npt_cs_encoder *
@@ -267,6 +268,7 @@ npt_ring_submit_command_init(struct npt_ring *ring,
    submit->reply_size = reply_size;
    submit->enc.cur = (uint8_t *)cmd_data;
    submit->enc.end = (uint8_t *)cmd_data + cmd_size;
+   submit->staged = false;
    return &submit->enc;
 }
 

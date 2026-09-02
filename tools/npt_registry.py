@@ -206,6 +206,15 @@ class NptMethod:
     # and make the caller loop forever.
     force_sync: bool = False
 
+    # Guest-proxy-only annotation: the command's effects become
+    # observable to other threads only through a later ordering point
+    # (a list's Close, ExecuteCommandLists, or a tracked descriptor
+    # read), so the guest may hold it in the calling thread's staging
+    # buffer and publish it to the ring in a burst.  None inherits the
+    # interface's staged_methods; sync methods and output-handle Creates
+    # are never staged whatever this says.
+    staged: Optional[bool] = None
+
 
 @dataclass
 class NptType:
@@ -227,6 +236,9 @@ class NptType:
     # For interfaces
     methods: list[NptMethod] = dataclass_field(default_factory=list)
     parent_name: Optional[str] = None
+    # Interface-wide default for NptMethod.staged (D3D12 command lists:
+    # every recording method).
+    staged_methods: bool = False
     parent: Optional['NptType'] = None  # resolved
     uuid: Optional[str] = None
     uuid_hash: int = 0
@@ -482,6 +494,7 @@ def _parse_method(raw, index):
         id=raw.get('id'),
         skip_default=bool(raw.get('skip_default', False)),
         force_sync=bool(raw.get('force_sync', False)),
+        staged=(bool(raw['staged']) if 'staged' in raw else None),
     )
 
 
@@ -685,6 +698,7 @@ class TypeRegistry:
 
             elif cat == Category.INTERFACE:
                 ntype.parent_name = raw.get('parent')
+                ntype.staged_methods = bool(raw.get('staged_methods', False))
                 ntype.uuid = raw.get('uuid')
                 if ntype.uuid:
                     ntype.uuid_bytes = parse_uuid(ntype.uuid)
