@@ -312,6 +312,51 @@ class Gen:
                 and field.output
                 and not field.input)
 
+    def method_always_sync(self, method) -> bool:
+        """
+        Whether the guest thunk must wait for a reply.
+
+        Output COM handles are marshaled as guest-allocated ids in the
+        command body, so they are not outputs for this decision: the id
+        is minted guest-side, and a use of the new object that reaches
+        the host before the Create has registered the id waits for the
+        registration there (the host object table blocks such lookups on
+        ring threads), so Create-then-Use is race-free without a round
+        trip.  A failed Create leaves a failed-object record under the
+        id; the first use surfaces it (deferred-fatal model).
+
+        HRESULT-only returns are async-eligible under that same model.
+        Other scalar returns (BOOL, UINT, ...) and struct returns need a
+        sync reply to deliver the value.
+
+        force_sync (registry annotation) is for methods whose HRESULT
+        carries control-flow meaning rather than fatal-error semantics --
+        enumeration terminators like EnumOutputs / EnumAdapters signal
+        end-of-iteration with DXGI_ERROR_NOT_FOUND, and the deferred-fatal
+        path would mask that into a fake S_OK and make the caller loop
+        forever.
+        """
+        has_non_handle_output = any(
+            p.output and not self.is_output_com_handle(p)
+            for p in method.params)
+        has_ret = self.has_return(method.return_type)
+        has_sync_ret = has_ret and method.return_type != 'HRESULT'
+        return has_non_handle_output or has_sync_ret or method.force_sync
+
+    def method_is_staged(self, iface, method) -> bool:
+        """
+        Whether the guest may hold the command in the calling thread's
+        staging buffer (NptMethod.staged / NptType.staged_methods).  Never
+        for a command that carries a reply or registers an output handle:
+        a reply is waited for at once, and a Create's id must be
+        registered before any thread can use it.
+        """
+        staged = (method.staged if method.staged is not None
+                  else iface.staged_methods)
+        if not staged or self.method_always_sync(method):
+            return False
+        return not any(self.is_output_com_handle(p) for p in method.params)
+
     def is_output_com_handle_array(self, field: NptField) -> bool:
         return self.is_output_com_handle(field) and field.count is not None
 

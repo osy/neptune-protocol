@@ -159,35 +159,9 @@ npt_${iface_lower}_default_Release(void *self)
     has_ret = GEN.has_return(method.return_type)
     is_agg = GEN.is_aggregate_return(method.return_type)
     out_handles = output_com_handle_params(method)
-    # Output COM handles are marshaled as guest-allocated ids in the
-    # command body (no reply round-trip).  For the sync-vs-async
-    # decision they do not count as "outputs".
-    has_non_handle_output = any(
-        p.output and not GEN.is_output_com_handle(p)
-        for p in method.params
-    )
-    # HRESULT-only returns are async-eligible under the deferred-fatal
-    # model: a failed create leaves the guest_id unregistered on the
-    # host, and the next method dispatched against that id trips
-    # decoder_fatal.  Other scalar returns (BOOL, UINT, etc.) and
-    # struct returns still need a sync reply to deliver the value.
-    is_hresult_ret = method.return_type == 'HRESULT'
-    has_sync_ret = has_ret and not is_hresult_ret
-    # Output COM handles do not force a reply: the id is minted guest-
-    # side and travels in the command body, and a use of the new object
-    # that reaches the host on another ring before the Create's ring
-    # has registered the id waits for the registration there (the host
-    # object table blocks such lookups on ring threads), so Create-then-
-    # Use is race-free on every ring model without a round trip.  A
-    # failed Create leaves a failed-object record under the id; the
-    # first use surfaces it (deferred-fatal model).
-    # force_sync (registry annotation) is for methods whose HRESULT
-    # carries control-flow meaning rather than fatal-error semantics --
-    # e.g. enumeration terminators like EnumOutputs / EnumAdapters
-    # signal end-of-iteration with DXGI_ERROR_NOT_FOUND, and the
-    # async/deferred-fatal path would mask that into a fake S_OK and
-    # make the caller loop forever.
-    always_sync = has_non_handle_output or has_sync_ret or method.force_sync
+    # Sync-vs-async: GEN.method_always_sync (npt_codegen.py) is the one
+    # statement of the rule.
+    always_sync = GEN.method_always_sync(method)
     # `needs_sync` drives the wrapper-build guard below: with a real
     # HRESULT the guard is NPT_SUCCEEDED(_ret); a pure-async Create
     # guards on the stashed id alone.
