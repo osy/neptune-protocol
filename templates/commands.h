@@ -330,6 +330,7 @@ ${' ' * (len('npt_dispatch_') + len(fname) + 1)}uint64_t object_id)
         if (!(cmd_flags & NPT_CMD_FLAG_REPLY)) {
             npt_log("dropping ${fname} on unregistered object "
                     "0x%016" PRIx64, (uint64_t)object_id);
+${GEN.register_failed_output_handles(method.params, 'args.')}
             npt_cs_decoder_reset_temp_pool(ctx->decoder);
             return;
         }
@@ -347,6 +348,7 @@ ${' ' * (len('npt_dispatch_') + len(fname) + 1)}uint64_t object_id)
         if (!(cmd_flags & NPT_CMD_FLAG_REPLY)) {
             npt_log("dropping ${fname}: an argument handle is unknown "
                     "to this context");
+${GEN.register_failed_output_handles(method.params, 'args.')}
             npt_cs_decoder_reset_temp_pool(ctx->decoder);
             return;
         }
@@ -771,6 +773,7 @@ ${' ' * (len('npt_dispatch_') + len(fname) + 1)}uint32_t cmd_flags)
         if (!(cmd_flags & NPT_CMD_FLAG_REPLY)) {
             npt_log("dropping ${fname}: an argument handle is unknown "
                     "to this context");
+${GEN.register_failed_output_handles(func.params, 'args.')}
             npt_cs_decoder_reset_temp_pool(ctx->decoder);
             return;
         }

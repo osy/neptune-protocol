@@ -2093,7 +2093,10 @@ class Gen:
                 f'{ind}if ({acc} && *{acc})\n'
                 f'{ind}    npt_cs_handle_register_guest_id(ctx, '
                 f'{prefix}_guest_id_{field.name}, *{acc},\n'
-                f'{ind}        npt_object_type_from_iid({riid_expr}));'
+                f'{ind}        npt_object_type_from_iid({riid_expr}));\n'
+                f'{ind}else if ({acc})\n'
+                f'{ind}    npt_cs_handle_register_failed_guest_id(ctx, '
+                f'{prefix}_guest_id_{field.name});'
             )
 
         obj_type = self._object_type_for_field(field)
@@ -2103,19 +2106,61 @@ class Gen:
         if field.indirection == 2:
             count_expr = self._get_count_expr(field, prefix)
             if count_expr:
+                # A slot the call left NULL still has a guest id in use;
+                # its failed record answers lookups that would otherwise
+                # wait for a registration that never comes.
                 return (f'{ind}if ({acc} && {prefix}_guest_ids_{field.name}) {{\n'
                         f'{ind}    const uint32_t _n = '
                         f'{prefix}_guest_id_count_{field.name};\n'
-                        f'{ind}    for (uint32_t _i = 0; _i < _n; _i++)\n'
-                        f'{ind}        npt_cs_handle_register_guest_id(ctx,\n'
-                        f'{ind}            {prefix}_guest_ids_{field.name}[_i], '
+                        f'{ind}    for (uint32_t _i = 0; _i < _n; _i++) {{\n'
+                        f'{ind}        if ({acc}[_i])\n'
+                        f'{ind}            npt_cs_handle_register_guest_id(ctx,\n'
+                        f'{ind}                {prefix}_guest_ids_{field.name}[_i], '
                         f'{acc}[_i], {obj_type});\n'
+                        f'{ind}        else\n'
+                        f'{ind}            npt_cs_handle_register_failed_guest_id(ctx,\n'
+                        f'{ind}                {prefix}_guest_ids_{field.name}[_i]);\n'
+                        f'{ind}    }}\n'
                         f'{ind}}}')
             return (f'{ind}if ({acc} && *{acc})\n'
                     f'{ind}    npt_cs_handle_register_guest_id(ctx, '
-                    f'{prefix}_guest_id_{field.name}, *{acc}, {obj_type});')
+                    f'{prefix}_guest_id_{field.name}, *{acc}, {obj_type});\n'
+                    f'{ind}else if ({acc})\n'
+                    f'{ind}    npt_cs_handle_register_failed_guest_id(ctx, '
+                    f'{prefix}_guest_id_{field.name});')
 
         return ''
+
+    def register_failed_output_handles(self, params, prefix: str,
+                                       indent: int = 3) -> str:
+        """
+        Emit, for every output COM handle among `params`, the
+        failed-object registration for each guest-minted id.  Used on the
+        dispatch paths that drop a call before the backend runs, so the
+        ids the guest already hands around are answered instead of
+        waited for.
+        """
+        ind = '    ' * indent
+        lines = []
+        for p in params:
+            if not p.output or not p.is_com_handle:
+                continue
+            inner = self._anonymous_inner_fields(p)
+            fields = inner if inner is not None else [p]
+            for f in fields:
+                if f.indirection != 2:
+                    continue
+                if self._get_count_expr(f, prefix):
+                    lines += [
+                        f'{ind}for (uint32_t _i = 0; '
+                        f'_i < {prefix}_guest_id_count_{f.name}; _i++)',
+                        f'{ind}    npt_cs_handle_register_failed_guest_id('
+                        f'ctx, {prefix}_guest_ids_{f.name}[_i]);',
+                    ]
+                    continue
+                lines.append(f'{ind}npt_cs_handle_register_failed_guest_id('
+                             f'ctx, {prefix}_guest_id_{f.name});')
+        return '\n'.join(lines)
 
     def _riid_expr_for(self, params, prefix: str) -> Optional[str]:
         """Return a C expression that evaluates to a const GUID * if
