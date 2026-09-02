@@ -173,29 +173,14 @@ npt_${iface_lower}_default_Release(void *self)
     # struct returns still need a sync reply to deliver the value.
     is_hresult_ret = method.return_type == 'HRESULT'
     has_sync_ret = has_ret and not is_hresult_ret
-    # Output COM handles are a *conditional* sync driver: sync when
-    # the device has multi-ring enabled, async otherwise.
-    #
-    # The race only exists with multi-ring: thread A may create on its
-    # TLS ring, then use the new wrapper on DC's instance ring.  Those
-    # dispatch on two host threads, and the Use-side lookup can race
-    # ahead of the Create-side register.  Sync forces the host register
-    # to commit before the caller gets the wrapper.
-    #
-    # With multi-ring off, every submit lands on the single primary
-    # ring in FIFO order, so Create-then-Use on the same ring cannot
-    # race.  Async is safe and measurably faster (see
-    # docs/performance-analysis-2026-04-17-phase1-3.md: 2.37x loading
-    # throughput when Create* is async).
-    #
-    # Compile-time we can't know which mode runs, so we emit a runtime
-    # branch on dev->multi_ring_enabled.  The bool is set once at
-    # device creation, so the branch predictor always pins it after
-    # the first call.  D3D12 will unconditionally set the flag true
-    # at device-create time, so D3D12's path is always sync -- fine,
-    # since D3D12's fan-out-heavy workload amortizes the sync cost
-    # over many parallel recorders.
-    has_output_com_handles = bool(out_handles)
+    # Output COM handles do not force a reply: the id is minted guest-
+    # side and travels in the command body, and a use of the new object
+    # that reaches the host on another ring before the Create's ring
+    # has registered the id waits for the registration there (the host
+    # object table blocks such lookups on ring threads), so Create-then-
+    # Use is race-free on every ring model without a round trip.  A
+    # failed Create leaves a failed-object record under the id; the
+    # first use surfaces it (deferred-fatal model).
     # force_sync (registry annotation) is for methods whose HRESULT
     # carries control-flow meaning rather than fatal-error semantics --
     # e.g. enumeration terminators like EnumOutputs / EnumAdapters
@@ -203,14 +188,10 @@ npt_${iface_lower}_default_Release(void *self)
     # async/deferred-fatal path would mask that into a fake S_OK and
     # make the caller loop forever.
     always_sync = has_non_handle_output or has_sync_ret or method.force_sync
-    maybe_sync = has_output_com_handles and not always_sync
-    # `needs_sync` is kept for the wrapper-build guard below: it
-    # controls whether we use NPT_SUCCEEDED(_ret) vs a bare NULL check.
-    # Under `maybe_sync`, _ret is real HRESULT in sync mode and S_OK
-    # (0) in async mode, so NPT_SUCCEEDED works in both.  Under
-    # `always_sync`, _ret is a real value.  Under pure async there
-    # is no _ret for the guard (but there are also no handles to guard).
-    needs_sync = always_sync or maybe_sync
+    # `needs_sync` drives the wrapper-build guard below: with a real
+    # HRESULT the guard is NPT_SUCCEEDED(_ret); a pure-async Create
+    # guards on the stashed id alone.
+    needs_sync = always_sync
 
     # Safety check: output COM handle arrays use their count expression
     # to iterate and wrap elements after npt_call_ returns.  If the
@@ -318,34 +299,6 @@ void *self\
 ${a}${',' if i < len(call_args(method)) - 1 else ''}\
 % endfor
 );
-% elif maybe_sync:
-    /* Runtime-conditional sync: with multi_ring_enabled the caller may
-     * use the new handle on a different ring, so we must wait for the
-     * host register.  With multi_ring off, all traffic is FIFO-ordered
-     * on primary and async is race-free. */
-% if has_ret:
-    ${method.return_type} _ret;
-% endif
-    if (npt_com_self_device(self)->multi_ring_enabled) {
-% if has_ret:
-        _ret = npt_call_${fname}(\
-% else:
-        npt_call_${fname}(\
-% endif
-% for i, a in enumerate(call_args(method)):
-${a}${',' if i < len(call_args(method)) - 1 else ''}\
-% endfor
-);
-    } else {
-        npt_async_${fname}(\
-% for i, a in enumerate(call_args(method)):
-${a}${',' if i < len(call_args(method)) - 1 else ''}\
-% endfor
-);
-% if has_ret:
-        _ret = (${method.return_type})0;  /* deferred-fatal: assume S_OK */
-% endif
-    }
 % else:
     npt_async_${fname}(\
 % for i, a in enumerate(call_args(method)):

@@ -320,6 +320,13 @@ npt_cs_handle_register_guest_id(struct npt_dispatch_context *ctx,
    (void)ctx; (void)guest_id; (void)obj; (void)type;
 }
 
+static inline void
+npt_cs_handle_register_failed_guest_id(struct npt_dispatch_context *ctx,
+                                       uint64_t guest_id)
+{
+   (void)ctx; (void)guest_id;
+}
+
 /* Test harness stub for the guest-side id allocator (the generated
  * encoders call it).  Monotonic counter is fine for test purposes; no
  * coordination with a real runtime. */
