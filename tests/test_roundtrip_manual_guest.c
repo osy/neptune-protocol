@@ -75,6 +75,39 @@ static int test_guest_OMSetBlendFactor_null_BlendFactor(void)
     return 0;
 }
 
+/*
+ * Counted COM handle arrays encode array_count=0 when the caller pointer is
+ * NULL, even if the declared element count is non-zero.  The sizing path must
+ * make the same choice or the command header advertises more bytes than the
+ * encoder actually writes.
+ */
+static int test_guest_VSSetConstantBuffers_null_buffers_size(void)
+{
+    uint8_t buf[128] = {0};
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+
+    const UINT start_slot = 0;
+    const UINT num_buffers = 3;
+
+    const size_t expected =
+        npt_sizeof_ID3D11DeviceContext_VSSetConstantBuffers(
+            start_slot, num_buffers, NULL);
+
+    npt_encode_ID3D11DeviceContext_VSSetConstantBuffers(
+        &enc, 0, 0xDEAD, start_slot, num_buffers, NULL);
+
+    const size_t actual = npt_test_encoder_written(&enc, buf);
+
+    if (expected != actual) {
+        fprintf(stderr,
+                "FAIL: VSSetConstantBuffers NULL: sizeof=%zu, encoded=%zu\n",
+                expected, actual);
+        return -1;
+    }
+
+    return 0;
+}
+
 /* ================================================================== */
 /* Reply-size upper-bound invariant (meta-test)                       */
 /* ================================================================== */
@@ -278,6 +311,8 @@ static const struct guest_manual_test_entry guest_manual_tests[] = {
       test_guest_OMSetBlendState_null_BlendFactor },
     { "guest encode ID3D12GraphicsCommandList::OMSetBlendFactor NULL BlendFactor",
       test_guest_OMSetBlendFactor_null_BlendFactor },
+    { "guest sizeof/encode ID3D11DeviceContext::VSSetConstantBuffers NULL buffers",
+      test_guest_VSSetConstantBuffers_null_buffers_size },
     { "guest reply size upper-bound invariant (meta)",
       test_guest_reply_size_upper_bound_meta },
     { "guest decode DRED GetAutoBreadcrumbsOutput unsupported reply default",
