@@ -219,6 +219,20 @@ Unions are serialized the same as structs which may lead to duplicated data.
 When a command parameter is an external handle, it is serialized the same as a
 COM handle (as an object handle).
 
+### Hand-written codecs
+
+A struct whose wire form no field annotation can express is marked
+`manual_codec` in the overlay; its codec is hand-written in
+`codecs/npt_protocol_codec_<name>.h`, which defines and documents its wire
+form.  The generator forward-declares the helpers (including the host-side
+handle-replace pass) and ships the header beside its output.
+
+`D3D12_PIPELINE_STATE_STREAM_DESC`: a `uint64_t` record count, then each
+record's subobject type (an enum) and its payload under the payload type's
+own rules.  Neither `SizeInBytes` nor the packed record layout is sent; the
+decoder rebuilds the stream in its own ABI.  A stream with an unknown record
+type, or a record that does not fit `SizeInBytes`, is not serializable.
+
 ### Others
 
 When a command parameter is not of a type with a serialization specified, it

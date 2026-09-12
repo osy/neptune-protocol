@@ -179,7 +179,8 @@ class Method:
 class TypeInfo:
     __slots__ = ('name', 'primitive', 'fields', 'methods', 'parent_name',
                  'uuid', 'uuid_hash', 'uuid_bytes', 'return_type', 'group',
-                 'id', 'params', 'alias_target', 'is_anonymous', 'value')
+                 'id', 'params', 'alias_target', 'is_anonymous', 'value',
+                 'manual_codec')
 
     def __init__(self, name, primitive):
         self.name = name
@@ -197,6 +198,7 @@ class TypeInfo:
         self.alias_target = None
         self.is_anonymous = False
         self.value = None
+        self.manual_codec = False
 
     @property
     def category(self):
@@ -263,6 +265,7 @@ class Registry:
                 t.fields = [Field(f, parent_name=name, index=i)
                             for i, f in enumerate(raw.get('fields', []))]
             elif cat in ('struct', 'union'):
+                t.manual_codec = bool(raw.get('manual_codec', False))
                 t.fields = [Field(f, parent_name=name, index=i)
                             for i, f in enumerate(raw.get('fields', []))]
             elif cat == 'interface':
@@ -662,6 +665,8 @@ def is_scalar_return(reg, ret_type):
 
 def should_skip_struct(reg, t):
     """Return (skip, reason) for a struct/union type."""
+    if t.manual_codec:
+        return True, "hand-written codec (manual_codec)"
     for field in t.fields:
         if field.optional:
             continue

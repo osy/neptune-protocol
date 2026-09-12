@@ -1061,6 +1061,10 @@
     },
 
     {
+      "name": "D3D12_PIPELINE_STATE_STREAM_DESC",
+      "manual_codec": true
+    },
+    {
       "name": "D3D12_STATE_SUBOBJECT",
       "fields": [
         {

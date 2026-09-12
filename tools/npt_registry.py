@@ -232,6 +232,9 @@ class NptType:
 
     # For structs/unions
     # (fields is reused)
+    # Codec is hand-written (codecs/); the generator only forward-declares
+    # it and assumes it is handle-bearing and of dynamic wire size.
+    manual_codec: bool = False
 
     # For interfaces
     methods: list[NptMethod] = dataclass_field(default_factory=list)
@@ -693,6 +696,7 @@ class TypeRegistry:
                     ntype.fields.append(_parse_field(f, parent_name=name, index=i))
 
             elif cat in (Category.STRUCT, Category.UNION):
+                ntype.manual_codec = bool(raw.get('manual_codec', False))
                 for i, f in enumerate(raw.get('fields', [])):
                     ntype.fields.append(_parse_field(f, parent_name=name, index=i))
 
@@ -862,6 +866,12 @@ class TypeRegistry:
 
         for ntype in self.types.values():
             ctx = ntype.name or '<anon>'
+            if ntype.manual_codec and (
+                    not ntype.name or ntype.is_anonymous
+                    or ntype.category not in (Category.STRUCT, Category.UNION)):
+                raise ValueError(
+                    f"manual_codec on {ctx}: only a named struct or union "
+                    f"can have a hand-written codec")
             for field in ntype.fields:
                 check_field(field, ctx)
             for param in ntype.params:
@@ -1180,6 +1190,8 @@ class TypeRegistry:
             result = False
         elif ntype.category not in (Category.STRUCT, Category.UNION):
             result = False
+        elif ntype.manual_codec:
+            result = True
         else:
             next_visited = visited | {type_name}
             result = any(self._field_makes_dynamic(f, next_visited)
