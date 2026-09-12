@@ -67,6 +67,11 @@
           "type": "array",
           "items": { "$ref": "#/$defs/FieldObject" },
           "description": "Function types: function params."
+        },
+        "manual_codec": {
+          "type": "boolean",
+          "default": false,
+          "description": "Struct/union types: the codec is hand-written in codecs/npt_protocol_codec_<name>.h. The generator only forward-declares npt_sizeof_/npt_encode_/npt_decode_<name> (and, on the host, npt_replace_<name>_handle), copies the header beside its output and includes it from the structs header."
         }
       },
       "additionalProperties": false

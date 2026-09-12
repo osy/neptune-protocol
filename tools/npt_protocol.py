@@ -92,12 +92,23 @@ def write_file(outdir, filename, content):
 # Types with hand-written encode/decode in npt_cs_helpers.h
 BUILTIN_STRUCT_NAMES = {'GUID', 'POINT', 'RECT', 'LONG'}
 
+# Hand-written codec headers (one per manual_codec type in the registry)
+CODEC_DIR = NPT_DIR / 'codecs'
+
+
+def codec_header_name(ntype):
+    """Output file name of a manual_codec type's hand-written codec."""
+    return f'npt_protocol_codec_{ntype.name}.h'
+
+
 def _collect_struct_deps(ntype, out, seen, anon_names=None):
     """Recursively collect struct/union dependencies in order."""
     if ntype.name in seen:
         return
     if ntype.name in BUILTIN_STRUCT_NAMES:
         return  # hand-written in npt_cs_helpers.h
+    if ntype.manual_codec:
+        return  # hand-written in codecs/
     seen.add(ntype.name)
     for field in ntype.fields:
         if field.type_ref and field.type_ref.category in (Category.STRUCT, Category.UNION):
@@ -147,6 +158,12 @@ def collect_struct_types(registry):
             _collect_struct_deps(ntype, result, seen, anon_names)
 
     return result
+
+
+def collect_manual_codec_types(registry):
+    """Struct/union types whose codec is hand-written (manual_codec)."""
+    return [t for t in registry.structs + registry.unions
+            if t.name and t.manual_codec]
 
 
 def generate_cs(side, outdir):
@@ -224,14 +241,28 @@ def generate_types(registry, outdir):
 def generate_structs(registry, gen, side, outdir):
     """Generate struct/union serialization."""
     struct_types = collect_struct_types(registry)
+    manual_types = collect_manual_codec_types(registry)
 
     content = render_template('structs.h',
         SIDE=side,
         IS_HOST=(side == 'host'),
         GEN=gen,
         STRUCT_TYPES=struct_types,
+        MANUAL_TYPES=manual_types,
+        codec_header_name=codec_header_name,
     )
     write_file(outdir, f'npt_protocol_{side}_structs.h', content)
+
+
+def generate_codecs(registry, outdir):
+    """Copy each manual_codec type's hand-written header beside the output."""
+    for ntype in collect_manual_codec_types(registry):
+        src = CODEC_DIR / codec_header_name(ntype)
+        if not src.is_file():
+            raise FileNotFoundError(
+                f"{ntype.name} is marked manual_codec but {src} is missing")
+        write_file(outdir, codec_header_name(ntype),
+                   src.read_text(encoding='utf-8'))
 
 
 def generate_commands(registry, gen, side, outdir):
@@ -464,8 +495,9 @@ def main():
     # Types (common -- idempotent across sides)
     generate_types(registry, args.outdir)
 
-    # All structs in the shared file
+    # All structs in the shared file, plus the hand-written codecs
     generate_structs(registry, gen, args.side, args.outdir)
+    generate_codecs(registry, args.outdir)
 
     # Commands (per-family + toplevel)
     includes = generate_commands(registry, gen, args.side, args.outdir)

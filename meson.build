@@ -71,6 +71,16 @@ npt_template_files = files(
   'templates/types.h',
 )
 
+# Hand-written codecs (manual_codec types), shipped by the host target
+# like the other shared files.
+npt_codec_headers = [
+  'npt_protocol_codec_D3D12_PIPELINE_STATE_STREAM_DESC.h',
+]
+npt_codec_files = []
+foreach codec : npt_codec_headers
+  npt_codec_files += files('codecs' / codec)
+endforeach
+
 # Derive interface family names from the registry JSON so the list
 # stays in sync with the generator automatically.
 command_headers = run_command(
@@ -90,6 +100,9 @@ npt_protocol_host_outputs = [
   'npt_protocol_host_cs.h',
   'npt_protocol_host_structs.h',
 ]
+foreach codec : npt_codec_headers
+  npt_protocol_host_outputs += codec
+endforeach
 foreach family : command_headers
   npt_protocol_host_outputs += 'npt_protocol_host_' + family + '.h'
 endforeach
@@ -179,6 +192,7 @@ npt_protocol_host = custom_target(
     npt_script_files,
     npt_json_files,
     npt_template_files,
+    npt_codec_files,
   ],
   build_by_default: true,
 )
@@ -198,6 +212,7 @@ npt_protocol_guest = custom_target(
     npt_script_files,
     npt_json_files,
     npt_template_files,
+    npt_codec_files,
   ],
   build_by_default: true,
 )

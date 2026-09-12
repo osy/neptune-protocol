@@ -28,6 +28,7 @@ representation, etc. — is documented in
 | `npt_interface_ids.json` | Authoritative GUID ↔ 16-bit interface-id pinning file. Once allocated, an id is **never** reused (protobuf field-number policy). |
 | `tools/` | Python generators (see below). |
 | `templates/` | Mako templates that the generators expand into C headers / sources. |
+| `codecs/` | Hand-written codecs for `manual_codec` types, shipped beside the generated headers. |
 | `tests/` | Meson-driven roundtrip tests that encode and decode every method on every interface. |
 | `docs/` | Protocol design notes. |
 | `meson.build`, `meson_options.txt` | Build configuration. |
@@ -128,7 +129,9 @@ a fork of the SDK headers, for example:
 - per-method tweaks such as `skip_default: true` to opt a method out of
   the generator's default thunk in favour of a hand-written one,
 - per-parameter fixes (handle classification, input/output direction,
-  array counts).
+  array counts),
+- `manual_codec: true` on a struct whose wire form no field annotation
+  can express: its codec is hand-written in `codecs/`.
 
 Multiple overlays can be passed; they are applied in order, and arrays of
 typed objects are merged by `name` (or by `index` for positional

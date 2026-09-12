@@ -2213,6 +2213,8 @@ class Gen:
         """Check recursively if a struct/union type contains any handle fields."""
         if ntype is None:
             return False
+        if ntype.manual_codec:
+            return True  # hand-written replace pass; always called
         if _visited is None:
             _visited = set()
         if ntype.name in _visited:

@@ -19,7 +19,7 @@
 /* Forward declarations: structs with mutual recursion (e.g.
  * D3D12_STATE_SUBOBJECT ↔ D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION via the
  * tagged-union overlay) need every helper visible before any body emits. */
-% for ty in STRUCT_TYPES:
+% for ty in STRUCT_TYPES + MANUAL_TYPES:
 static inline size_t npt_sizeof_${ty.name}(const ${ty.name} *val, int max_mode);
 static inline void npt_encode_${ty.name}(struct npt_cs_encoder *enc, const ${ty.name} *val);
 static inline void npt_decode_${ty.name}(struct npt_cs_decoder *dec, ${ty.name} *val);
@@ -81,6 +81,16 @@ ${code}
 
 % endif
 % endfor
+% if MANUAL_TYPES:
+
+/* Hand-written codecs (manual_codec); NPT_CODEC_IS_HOST guards their
+ * host-only replace pass. */
+#define NPT_CODEC_IS_HOST ${1 if IS_HOST else 0}
+% for ty in MANUAL_TYPES:
+#include "${codec_header_name(ty)}"
+% endfor
+#undef NPT_CODEC_IS_HOST
+% endif
 
 #pragma GCC diagnostic pop
 

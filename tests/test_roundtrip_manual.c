@@ -32,7 +32,9 @@
  *   D3D12_NODE_CPU_INPUT             (void *pRecords)
  *   D3D12_SUBRESOURCE_DATA           (void *pData)
  *   D3D12_MEMCPY_DEST                (void *pData)
- *   D3D12_PIPELINE_STATE_STREAM_DESC (_Inexpressible_ count)
+ *
+ * D3D12_PIPELINE_STATE_STREAM_DESC (_Inexpressible_ count) has a
+ * hand-written codec (manual_codec) and is tested below.
  *
  * Transitively non-serializable:
  *   D3D12_STATE_OBJECT_DESC          -> D3D12_STATE_SUBOBJECT
@@ -1171,7 +1173,350 @@ struct manual_test_entry {
     manual_test_func func;
 };
 
+/* ------------------------------------------------------------------ */
+/* D3D12_PIPELINE_STATE_STREAM_DESC (hand-written codec, manual_codec)  */
+/* ------------------------------------------------------------------ */
+
+/* Append one {type, payload} record laid out as
+ * CD3DX12_PIPELINE_STATE_STREAM_SUBOBJECT lays it out. */
+static void pss_put(uint8_t *buf, size_t *off, uint32_t type,
+                    const void *payload, size_t size, size_t align)
+{
+    size_t at = (*off + sizeof(void *) - 1) & ~(sizeof(void *) - 1);
+    memcpy(buf + at, &type, sizeof(type));
+    at = (at + sizeof(type) + align - 1) & ~(align - 1);
+    memcpy(buf + at, payload, size);
+    *off = (at + size + sizeof(void *) - 1) & ~(sizeof(void *) - 1);
+}
+
+#define PSS_PUT(buf, off, tag, T, val) \
+    pss_put(buf, off, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_##tag, &(val), sizeof(T), _Alignof(T))
+
+/* Encode `orig`, decode the wire, and check the decoded stream against
+ * the original record by record: same types, same payload bytes (shader
+ * bytecode compared by content since the decoded copy lives in decoder
+ * memory), same SizeInBytes, and the decoded stream re-encodes to the
+ * same wire bytes. */
+static int pss_roundtrip(const char *name, const D3D12_PIPELINE_STATE_STREAM_DESC *orig,
+                         int want_records)
+{
+    size_t w1_size = npt_sizeof_D3D12_PIPELINE_STATE_STREAM_DESC(orig, 0);
+    uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
+    struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
+    npt_encode_D3D12_PIPELINE_STATE_STREAM_DESC(&enc1, orig);
+    size_t w1_actual = npt_test_encoder_written(&enc1, w1);
+    if (w1_actual != w1_size) {
+        fprintf(stderr, "FAIL: %s: sizeof %zu, wrote %zu\n", name, w1_size, w1_actual);
+        free(w1);
+        return -1;
+    }
+
+    D3D12_PIPELINE_STATE_STREAM_DESC decoded;
+    memset(&decoded, 0, sizeof(decoded));
+    struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
+    npt_decode_D3D12_PIPELINE_STATE_STREAM_DESC(&dec, &decoded);
+    int result = 0;
+    if (decoded.SizeInBytes != orig->SizeInBytes || !decoded.pPipelineStateSubobjectStream) {
+        fprintf(stderr, "FAIL: %s: decoded size %zu (want %zu)\n", name,
+                (size_t)decoded.SizeInBytes, (size_t)orig->SizeInBytes);
+        result = -1;
+    }
+
+    const uint8_t *a = (const uint8_t *)orig->pPipelineStateSubobjectStream;
+    const uint8_t *b = (const uint8_t *)decoded.pPipelineStateSubobjectStream;
+    size_t pos = 0;
+    int records = 0;
+    while (result == 0 && pos < orig->SizeInBytes) {
+        uint32_t ta, tb;
+        size_t align, psize, poff;
+        memcpy(&ta, a + pos, sizeof(ta));
+        memcpy(&tb, b + pos, sizeof(tb));
+        if (ta != tb) {
+            fprintf(stderr, "FAIL: %s: record %d type %u vs %u\n", name, records, ta, tb);
+            result = -1;
+            break;
+        }
+        psize = npt_pss_payload((D3D12_PIPELINE_STATE_SUBOBJECT_TYPE)ta, &align);
+        poff = (pos + sizeof(uint32_t) + align - 1) & ~(align - 1);
+        if (ta == D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE) {
+            /* the host keeps the guest id in the pointer slot until the
+             * replace pass; the harness's npt_object_from_id is the identity */
+            if (memcmp(a + poff, b + poff, psize) != 0) {
+                fprintf(stderr, "FAIL: %s: record %d root signature id differs\n", name, records);
+                result = -1;
+                break;
+            }
+        } else if (ta == D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS ||
+                   ta == D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS) {
+            D3D12_SHADER_BYTECODE ba, bb;
+            memcpy(&ba, a + poff, sizeof(ba));
+            memcpy(&bb, b + poff, sizeof(bb));
+            if (ba.BytecodeLength != bb.BytecodeLength ||
+                (ba.BytecodeLength && (!bb.pShaderBytecode ||
+                 memcmp(ba.pShaderBytecode, bb.pShaderBytecode, ba.BytecodeLength) != 0))) {
+                fprintf(stderr, "FAIL: %s: record %d bytecode differs\n", name, records);
+                result = -1;
+                break;
+            }
+        } else if (memcmp(a + poff, b + poff, psize) != 0) {
+            fprintf(stderr, "FAIL: %s: record %d payload differs\n", name, records);
+            result = -1;
+            break;
+        }
+        pos = (poff + psize + sizeof(void *) - 1) & ~(sizeof(void *) - 1);
+        records++;
+    }
+    if (result == 0 && records != want_records) {
+        fprintf(stderr, "FAIL: %s: %d records, want %d\n", name, records, want_records);
+        result = -1;
+    }
+
+    if (result == 0) {
+        size_t w2_size = npt_sizeof_D3D12_PIPELINE_STATE_STREAM_DESC(&decoded, 0);
+        uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
+        struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
+        npt_encode_D3D12_PIPELINE_STATE_STREAM_DESC(&enc2, &decoded);
+        size_t w2_actual = npt_test_encoder_written(&enc2, w2);
+        result = npt_wire_compare(name, w1, w1_actual, w2, w2_actual);
+        free(w2);
+    }
+    npt_test_cleanup(&dec);
+    free(w1);
+    return result;
+}
+
+/* A mesh pipeline as an app packs it: pointer-bearing payloads (root
+ * signature handle, two shader blobs) among plain ones, with the 4- and
+ * 8-byte-aligned payloads interleaved so every padding rule is exercised. */
+static int test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_mesh(void)
+{
+    uint32_t seed = 0xDEAD0000u + __LINE__;
+    uint8_t ms_code[100], ps_code[52];
+    for (size_t i = 0; i < sizeof(ms_code); i++) ms_code[i] = (uint8_t)npt_test_rand(&seed);
+    for (size_t i = 0; i < sizeof(ps_code); i++) ps_code[i] = (uint8_t)npt_test_rand(&seed);
+
+    _Alignas(void *) uint8_t stream[1024];
+    memset(stream, 0xAB, sizeof(stream)); /* padding bytes are not part of the contract */
+    size_t off = 0;
+    ID3D12RootSignature *rs = (ID3D12RootSignature *)(uintptr_t)0x1234ULL;
+    PSS_PUT(stream, &off, ROOT_SIGNATURE, ID3D12RootSignature *, rs);
+    D3D12_SHADER_BYTECODE ms = { ms_code, sizeof(ms_code) };
+    D3D12_SHADER_BYTECODE ps = { ps_code, sizeof(ps_code) };
+    PSS_PUT(stream, &off, MS, D3D12_SHADER_BYTECODE, ms);
+    PSS_PUT(stream, &off, PS, D3D12_SHADER_BYTECODE, ps);
+    D3D12_BLEND_DESC blend; memset(&blend, 0, sizeof(blend));
+    blend.RenderTarget[0].RenderTargetWriteMask = 0xF;
+    blend.RenderTarget[3].BlendEnable = 1;
+    PSS_PUT(stream, &off, BLEND, D3D12_BLEND_DESC, blend);
+    UINT sample_mask = 0xFFFFFFFFu;
+    PSS_PUT(stream, &off, SAMPLE_MASK, UINT, sample_mask);
+    D3D12_RASTERIZER_DESC rast; memset(&rast, 0, sizeof(rast));
+    rast.FillMode = D3D12_FILL_MODE_SOLID; rast.CullMode = D3D12_CULL_MODE_BACK; rast.DepthBias = 7;
+    PSS_PUT(stream, &off, RASTERIZER, D3D12_RASTERIZER_DESC, rast);
+    D3D12_DEPTH_STENCIL_DESC ds; memset(&ds, 0, sizeof(ds));
+    ds.DepthEnable = 1; ds.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+    PSS_PUT(stream, &off, DEPTH_STENCIL, D3D12_DEPTH_STENCIL_DESC, ds);
+    D3D12_PRIMITIVE_TOPOLOGY_TYPE topo = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    PSS_PUT(stream, &off, PRIMITIVE_TOPOLOGY, D3D12_PRIMITIVE_TOPOLOGY_TYPE, topo);
+    D3D12_RT_FORMAT_ARRAY rts; memset(&rts, 0, sizeof(rts));
+    rts.NumRenderTargets = 2; rts.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; rts.RTFormats[1] = DXGI_FORMAT_R16G16_FLOAT;
+    PSS_PUT(stream, &off, RENDER_TARGET_FORMATS, D3D12_RT_FORMAT_ARRAY, rts);
+    DXGI_FORMAT dsv = DXGI_FORMAT_D32_FLOAT;
+    PSS_PUT(stream, &off, DEPTH_STENCIL_FORMAT, DXGI_FORMAT, dsv);
+    DXGI_SAMPLE_DESC sd = { 4, 0 };
+    PSS_PUT(stream, &off, SAMPLE_DESC, DXGI_SAMPLE_DESC, sd);
+    UINT node_mask = 1;
+    PSS_PUT(stream, &off, NODE_MASK, UINT, node_mask);
+
+    D3D12_PIPELINE_STATE_STREAM_DESC orig = { off, stream };
+    return pss_roundtrip("D3D12_PIPELINE_STATE_STREAM_DESC (mesh)", &orig, 12);
+}
+
+/* Every record type in one stream, so each payload codec is reached. */
+static int test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_all_records(void)
+{
+    uint32_t seed = 0xDEAD0000u + __LINE__;
+    _Alignas(void *) uint8_t stream[2048];
+    memset(stream, 0xCD, sizeof(stream));
+    size_t off = 0;
+    int records = 0;
+
+    ID3D12RootSignature *rs = NULL;   /* a null root signature travels as id 0 */
+    PSS_PUT(stream, &off, ROOT_SIGNATURE, ID3D12RootSignature *, rs); records++;
+    D3D12_SHADER_BYTECODE empty = { NULL, 0 };
+    PSS_PUT(stream, &off, VS, D3D12_SHADER_BYTECODE, empty); records++;
+    PSS_PUT(stream, &off, PS, D3D12_SHADER_BYTECODE, empty); records++;
+    PSS_PUT(stream, &off, DS, D3D12_SHADER_BYTECODE, empty); records++;
+    PSS_PUT(stream, &off, HS, D3D12_SHADER_BYTECODE, empty); records++;
+    PSS_PUT(stream, &off, GS, D3D12_SHADER_BYTECODE, empty); records++;
+    PSS_PUT(stream, &off, CS, D3D12_SHADER_BYTECODE, empty); records++;
+    PSS_PUT(stream, &off, AS, D3D12_SHADER_BYTECODE, empty); records++;
+    PSS_PUT(stream, &off, MS, D3D12_SHADER_BYTECODE, empty); records++;
+    D3D12_STREAM_OUTPUT_DESC so = { NULL, 0, NULL, 0, 5 };
+    PSS_PUT(stream, &off, STREAM_OUTPUT, D3D12_STREAM_OUTPUT_DESC, so); records++;
+    D3D12_BLEND_DESC blend; npt_test_fill(&blend, sizeof(blend), &seed);
+    PSS_PUT(stream, &off, BLEND, D3D12_BLEND_DESC, blend); records++;
+    UINT sample_mask = npt_test_rand(&seed);
+    PSS_PUT(stream, &off, SAMPLE_MASK, UINT, sample_mask); records++;
+    D3D12_RASTERIZER_DESC rast; npt_test_fill(&rast, sizeof(rast), &seed);
+    PSS_PUT(stream, &off, RASTERIZER, D3D12_RASTERIZER_DESC, rast); records++;
+    D3D12_DEPTH_STENCIL_DESC ds; npt_test_fill(&ds, sizeof(ds), &seed);
+    PSS_PUT(stream, &off, DEPTH_STENCIL, D3D12_DEPTH_STENCIL_DESC, ds); records++;
+    D3D12_INPUT_LAYOUT_DESC il = { NULL, 0 };
+    PSS_PUT(stream, &off, INPUT_LAYOUT, D3D12_INPUT_LAYOUT_DESC, il); records++;
+    D3D12_INDEX_BUFFER_STRIP_CUT_VALUE cut = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_0xFFFF;
+    PSS_PUT(stream, &off, IB_STRIP_CUT_VALUE, D3D12_INDEX_BUFFER_STRIP_CUT_VALUE, cut); records++;
+    D3D12_PRIMITIVE_TOPOLOGY_TYPE topo = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+    PSS_PUT(stream, &off, PRIMITIVE_TOPOLOGY, D3D12_PRIMITIVE_TOPOLOGY_TYPE, topo); records++;
+    D3D12_RT_FORMAT_ARRAY rts; npt_test_fill(&rts, sizeof(rts), &seed);
+    PSS_PUT(stream, &off, RENDER_TARGET_FORMATS, D3D12_RT_FORMAT_ARRAY, rts); records++;
+    DXGI_FORMAT dsv = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    PSS_PUT(stream, &off, DEPTH_STENCIL_FORMAT, DXGI_FORMAT, dsv); records++;
+    DXGI_SAMPLE_DESC sd = { 1, 0 };
+    PSS_PUT(stream, &off, SAMPLE_DESC, DXGI_SAMPLE_DESC, sd); records++;
+    UINT node_mask = 0;
+    PSS_PUT(stream, &off, NODE_MASK, UINT, node_mask); records++;
+    D3D12_CACHED_PIPELINE_STATE cached = { NULL, 0 };
+    PSS_PUT(stream, &off, CACHED_PSO, D3D12_CACHED_PIPELINE_STATE, cached); records++;
+    D3D12_PIPELINE_STATE_FLAGS flags = D3D12_PIPELINE_STATE_FLAG_TOOL_DEBUG;
+    PSS_PUT(stream, &off, FLAGS, D3D12_PIPELINE_STATE_FLAGS, flags); records++;
+    D3D12_DEPTH_STENCIL_DESC1 ds1; npt_test_fill(&ds1, sizeof(ds1), &seed);
+    PSS_PUT(stream, &off, DEPTH_STENCIL1, D3D12_DEPTH_STENCIL_DESC1, ds1); records++;
+    D3D12_VIEW_INSTANCING_DESC vi = { 0, NULL, D3D12_VIEW_INSTANCING_FLAG_NONE };
+    PSS_PUT(stream, &off, VIEW_INSTANCING, D3D12_VIEW_INSTANCING_DESC, vi); records++;
+    D3D12_DEPTH_STENCIL_DESC2 ds2; npt_test_fill(&ds2, sizeof(ds2), &seed);
+    PSS_PUT(stream, &off, DEPTH_STENCIL2, D3D12_DEPTH_STENCIL_DESC2, ds2); records++;
+    D3D12_RASTERIZER_DESC1 rast1; npt_test_fill(&rast1, sizeof(rast1), &seed);
+    PSS_PUT(stream, &off, RASTERIZER1, D3D12_RASTERIZER_DESC1, rast1); records++;
+    D3D12_RASTERIZER_DESC2 rast2; npt_test_fill(&rast2, sizeof(rast2), &seed);
+    PSS_PUT(stream, &off, RASTERIZER2, D3D12_RASTERIZER_DESC2, rast2); records++;
+
+    D3D12_PIPELINE_STATE_STREAM_DESC orig = { off, stream };
+    return pss_roundtrip("D3D12_PIPELINE_STATE_STREAM_DESC (all records)", &orig, records);
+}
+
+/* The runtime's parser accepts a stream whose last record omits its tail
+ * padding (it loops while the offset is below SizeInBytes); so does this
+ * codec, and the decoder rebuilds the record padded. */
+static int test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_unpadded_tail(void)
+{
+    _Alignas(void *) uint8_t stream[512];
+    memset(stream, 0, sizeof(stream));
+    size_t off = 0;
+    UINT node_mask = 3;
+    PSS_PUT(stream, &off, NODE_MASK, UINT, node_mask);
+    D3D12_BLEND_DESC blend; memset(&blend, 0, sizeof(blend));
+    blend.RenderTarget[0].RenderTargetWriteMask = 0xF;
+    size_t blend_at = off;
+    PSS_PUT(stream, &off, BLEND, D3D12_BLEND_DESC, blend);
+    /* sizeof(type) + sizeof(D3D12_BLEND_DESC) = 332 is not pointer-aligned:
+     * cut SizeInBytes at the payload's end instead of the padded record. */
+    size_t align, psize = npt_pss_payload(D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND, &align);
+    size_t payload_off = (blend_at + sizeof(uint32_t) + align - 1) & ~(align - 1);
+    size_t unpadded = payload_off + psize;
+    if (unpadded == off) {
+        fprintf(stderr, "FAIL: PIPELINE_STATE_STREAM (unpadded tail): case does not exercise padding\n");
+        return -1;
+    }
+    D3D12_PIPELINE_STATE_STREAM_DESC orig = { unpadded, stream };
+
+    size_t w_size = npt_sizeof_D3D12_PIPELINE_STATE_STREAM_DESC(&orig, 0);
+    uint8_t *w = (uint8_t *)calloc(1, w_size ? w_size : 1);
+    struct npt_cs_encoder enc = npt_test_encoder_init(w, w_size);
+    npt_encode_D3D12_PIPELINE_STATE_STREAM_DESC(&enc, &orig);
+    size_t w_actual = npt_test_encoder_written(&enc, w);
+
+    D3D12_PIPELINE_STATE_STREAM_DESC decoded;
+    memset(&decoded, 0, sizeof(decoded));
+    struct npt_cs_decoder dec = npt_test_decoder_init(w, w_actual);
+    npt_decode_D3D12_PIPELINE_STATE_STREAM_DESC(&dec, &decoded);
+    int result = 0;
+    if (w_actual != w_size || decoded.SizeInBytes != off ||
+        !decoded.pPipelineStateSubobjectStream ||
+        memcmp(decoded.pPipelineStateSubobjectStream, stream, unpadded) != 0) {
+        fprintf(stderr, "FAIL: PIPELINE_STATE_STREAM (unpadded tail): wrote %zu/%zu, size=%zu want %zu\n",
+                w_actual, w_size, (size_t)decoded.SizeInBytes, off);
+        result = -1;
+    }
+    npt_test_cleanup(&dec);
+    free(w);
+    return result;
+}
+
+/* Malformed streams -- an unknown record type, a record cut by
+ * SizeInBytes, a base that is not pointer-aligned -- are unsized and
+ * encode nothing, as the runtime rejects them with E_INVALIDARG.  A
+ * NULL stream is the empty stream, whatever SizeInBytes says. */
+static int test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_malformed(void)
+{
+    _Alignas(void *) uint8_t stream[256];
+    memset(stream, 0, sizeof(stream));
+    size_t off = 0;
+    UINT node_mask = 3;
+    PSS_PUT(stream, &off, NODE_MASK, UINT, node_mask);
+    size_t good = off;
+    uint32_t bogus = 0x7777;
+    pss_put(stream, &off, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MAX_VALID, &bogus, sizeof(bogus), _Alignof(uint32_t));
+
+    struct { const char *what; D3D12_PIPELINE_STATE_STREAM_DESC desc; int want_size; } cases[] = {
+        { "unknown record type", { off, stream }, 0 },
+        { "record cut by SizeInBytes", { good - 2, stream }, 0 },
+        { "base not pointer-aligned", { good, stream + 2 }, 0 },
+        { "NULL stream with nonzero size", { good, NULL }, 1 },
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        size_t w_size = npt_sizeof_D3D12_PIPELINE_STATE_STREAM_DESC(&cases[i].desc, 0);
+        uint8_t w[64];
+        memset(w, 0xEE, sizeof(w));
+        struct npt_cs_encoder enc = npt_test_encoder_init(w, sizeof(w));
+        npt_encode_D3D12_PIPELINE_STATE_STREAM_DESC(&enc, &cases[i].desc);
+        size_t w_actual = npt_test_encoder_written(&enc, w);
+        uint64_t count = 0xFFFF;
+        if (w_actual >= sizeof(count))
+            memcpy(&count, w, sizeof(count));
+        if (cases[i].want_size) {
+            /* the empty stream: an array count of zero, nothing else */
+            if (w_size != sizeof(uint64_t) || w_actual != w_size || count != 0) {
+                fprintf(stderr, "FAIL: PIPELINE_STATE_STREAM (%s): sizeof %zu wrote %zu count %llu\n",
+                        cases[i].what, w_size, w_actual, (unsigned long long)count);
+                return -1;
+            }
+        } else if (w_size != 0 || w_actual != 0) {
+            fprintf(stderr, "FAIL: PIPELINE_STATE_STREAM (%s): sizeof %zu, wrote %zu; want nothing\n",
+                    cases[i].what, w_size, w_actual);
+            return -1;
+        }
+    }
+
+    /* A wire record of unknown type stops the decoder with no stream. */
+    {
+        uint8_t w[16];
+        uint64_t count = 1;
+        int32_t type = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MAX_VALID;
+        memcpy(w, &count, sizeof(count));
+        memcpy(w + 8, &type, sizeof(type));
+        D3D12_PIPELINE_STATE_STREAM_DESC decoded = { 99, stream };
+        struct npt_cs_decoder dec = npt_test_decoder_init(w, sizeof(w));
+        npt_decode_D3D12_PIPELINE_STATE_STREAM_DESC(&dec, &decoded);
+        int result = 0;
+        if (decoded.SizeInBytes != 0 || decoded.pPipelineStateSubobjectStream != NULL) {
+            fprintf(stderr, "FAIL: PIPELINE_STATE_STREAM (unknown wire record): decoder kept a stream\n");
+            result = -1;
+        }
+        npt_test_cleanup(&dec);
+        return result;
+    }
+}
+
 static const struct manual_test_entry manual_tests[] = {
+    { "D3D12_PIPELINE_STATE_STREAM_DESC (mesh pipeline records)",
+      test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_mesh },
+    { "D3D12_PIPELINE_STATE_STREAM_DESC (every record type)",
+      test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_all_records },
+    { "D3D12_PIPELINE_STATE_STREAM_DESC (unpadded last record)",
+      test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_unpadded_tail },
+    { "D3D12_PIPELINE_STATE_STREAM_DESC (malformed streams)",
+      test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_malformed },
     { "D3D11_AUTHENTICATED_PROTECTION_FLAGS (Value variant)",
       test_manual_D3D11_AUTHENTICATED_PROTECTION_FLAGS_Value },
     { "D3D11_AUTHENTICATED_PROTECTION_FLAGS (Flags variant)",
