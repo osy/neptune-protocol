@@ -45,6 +45,11 @@
           "items": { "$ref": "#/$defs/MethodObject" },
           "description": "Interface methods (only for interface primitives)"
         },
+        "staged_methods": {
+          "type": "boolean",
+          "default": false,
+          "description": "Interface types: default for every own method's `staged`."
+        },
         "value": {
           "type": "integer",
           "description": "For const types: the constant value"
@@ -164,6 +169,10 @@
           "type": "boolean",
           "default": false,
           "description": "When true, the guest proxy emits a synchronous npt_call_ thunk regardless of multi_ring_enabled. Use for methods whose HRESULT carries control-flow meaning (e.g. EnumOutputs returning DXGI_ERROR_NOT_FOUND) rather than fatal-error semantics."
+        },
+        "staged": {
+          "type": "boolean",
+          "description": "When true, the guest may hold the command in the calling thread's staging buffer and publish it to the ring in a burst, because its effects become observable to other threads only through a later ordering point. Absent inherits the interface's staged_methods. Sync methods and output-handle Creates are never staged."
         }
       },
       "additionalProperties": false
