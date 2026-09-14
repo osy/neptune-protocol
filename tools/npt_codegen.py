@@ -957,9 +957,12 @@ class Gen:
     def _sizeof_handle(self, field, prefix, dst):
         """Sizeof for any handle field (single or array, COM or Win32)."""
         if field.indirection >= 2 and field.count:
+            acc = self._acc(field, prefix)
             count_expr = self._get_count_expr(field, prefix)
-            return [f'{dst} += npt_sizeof_array_count({count_expr});',
-                    f'{dst} += sizeof(uint64_t) * {count_expr};']
+            return [
+                f'{dst} += npt_sizeof_array_count({acc} ? {count_expr} : 0);',
+                f'{dst} += sizeof(uint64_t) * ({acc} ? {count_expr} : 0);',
+            ]
         return [f'{dst} += sizeof(uint64_t);']
 
     def _sizeof_value(self, field, acc, dst):
