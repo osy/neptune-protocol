@@ -1315,9 +1315,11 @@ class Gen:
         # dereferenced to a single inner struct.  acc[_i] is T*; pass it
         # directly to npt_encode_<T> (no `&`).
         if field.indirection >= 2 and count_expr is not None and not field.is_handle:
+            wire_count = count_expr if for_output else (
+                f'npt_counted_pointer_wire_count({acc}, (uint64_t)({count_expr}))')
             return [
                 f'if ({acc}) {{',
-                f'    npt_encode_array_count(enc, {count_expr});',
+                f'    npt_encode_array_count(enc, {wire_count});',
                 f'    for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
                 f'        npt_encode_{field.type_name}(enc, {acc}[_i]);',
                 f'}} else {{',
@@ -1349,9 +1351,11 @@ class Gen:
                     f'npt_encode_array_count(enc, {count_expr});',
                     f'npt_encode_{field.type_name}_array(enc, (const {field.type_name} *){acc}, {count_expr});',
                 ]
+            wire_count = count_expr if for_output else (
+                f'npt_counted_pointer_wire_count({acc}, (uint64_t)({count_expr}))')
             return [
                 f'if ({acc}) {{',
-                f'    npt_encode_array_count(enc, {count_expr});',
+                f'    npt_encode_array_count(enc, {wire_count});',
                 f'    npt_encode_{field.type_name}_array(enc, {acc}, {count_expr});',
                 f'}} else {{',
                 f'    npt_encode_array_count(enc, 0);',
@@ -1374,9 +1378,11 @@ class Gen:
                     f'for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
                     f'    npt_encode_{field.type_name}(enc, &{acc}[_i]);',
                 ]
+            wire_count = count_expr if for_output else (
+                f'npt_counted_pointer_wire_count({acc}, (uint64_t)({count_expr}))')
             return [
                 f'if ({acc}) {{',
-                f'    npt_encode_array_count(enc, {count_expr});',
+                f'    npt_encode_array_count(enc, {wire_count});',
                 f'    for (uint32_t _i = 0; _i < (uint32_t)({count_expr}); _i++)',
                 f'        npt_encode_{field.type_name}(enc, &{acc}[_i]);',
                 f'}} else {{',
@@ -1660,16 +1666,17 @@ class Gen:
                     f'        npt_decode_{field.type_name}(dec, '
                     f'({field.type_name} *)&{acc}[_i]);']
         return [
-            f'if (npt_peek_array_count(dec)) {{',
-            f'    const uint64_t _count = npt_decode_array_count_unchecked(dec);',
-            f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, '
-            f'sizeof({field.type_name}), _count);',
-            f'    if (!{acc}) return;',
-            *elem,
-            f'}} else {{',
-            f'    (void)npt_decode_array_count_unchecked(dec); /* consume the 0 */',
-            f'    (void)({count_expr}); /* unused: count_expr from registry */',
-            f'    {acc} = NULL;',
+            f'{{',
+            f'    uint64_t _count = 0;',
+            f'    if (npt_decode_counted_pointer_count(dec, &_count)) {{',
+            f'        {acc} = npt_cs_decoder_alloc_temp_array(dec, '
+            f'sizeof({field.type_name}), _count ? _count : 1);',
+            f'        if (!{acc}) return;',
+            *[f'    {line}' for line in elem],
+            f'    }} else {{',
+            f'        (void)({count_expr}); /* unused: count_expr from registry */',
+            f'        {acc} = NULL;',
+            f'    }}',
             f'}}',
         ]
 
@@ -1685,20 +1692,21 @@ class Gen:
         if field.indirection >= 2 and count_expr is not None and not field.is_handle \
                 and alloc_temp:
             return [
-                f'if (npt_peek_array_count(dec)) {{',
-                f'    const uint64_t _count = npt_decode_array_count_unchecked(dec);',
-                f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name} *), _count);',
-                f'    if (!{acc}) return;',
-                f'    for (uint32_t _i = 0; _i < (uint32_t)_count; _i++) {{',
-                f'        {field.type_name} *_elem = npt_cs_decoder_alloc_temp(dec, sizeof({field.type_name}));',
-                f'        if (!_elem) return;',
-                f'        npt_decode_{field.type_name}(dec, _elem);',
-                f'        (({field.type_name} **){acc})[_i] = _elem;',
+                f'{{',
+                f'    uint64_t _count = 0;',
+                f'    if (npt_decode_counted_pointer_count(dec, &_count)) {{',
+                f'        {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name} *), _count ? _count : 1);',
+                f'        if (!{acc}) return;',
+                f'        for (uint32_t _i = 0; _i < (uint32_t)_count; _i++) {{',
+                f'            {field.type_name} *_elem = npt_cs_decoder_alloc_temp(dec, sizeof({field.type_name}));',
+                f'            if (!_elem) return;',
+                f'            npt_decode_{field.type_name}(dec, _elem);',
+                f'            (({field.type_name} **){acc})[_i] = _elem;',
+                f'        }}',
+                f'    }} else {{',
+                f'        (void)({count_expr}); /* unused: count_expr from registry */',
+                f'        {acc} = NULL;',
                 f'    }}',
-                f'}} else {{',
-                f'    (void)npt_decode_array_count_unchecked(dec); /* consume the 0 */',
-                f'    (void)({count_expr}); /* unused: count_expr from registry */',
-                f'    {acc} = NULL;',
                 f'}}',
             ]
 
@@ -1754,14 +1762,12 @@ class Gen:
                 ]
             return [
                 f'uint64_t {cnt} = 0;',
-                f'if (npt_peek_array_count(dec)) {{',
-                f'    {cnt} = npt_decode_array_count_unchecked(dec);',
+                f'if (npt_decode_counted_pointer_count(dec, &{cnt})) {{',
                 f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, '
-                f'sizeof({field.type_name}), {cnt});',
+                f'sizeof({field.type_name}), {cnt} ? {cnt} : 1);',
                 f'    if (!{acc}) return;',
                 *elem,
                 f'}} else {{',
-                f'    (void)npt_decode_array_count_unchecked(dec); /* consume the 0 */',
                 f'    {acc} = NULL;',
                 f'}}',
             ]

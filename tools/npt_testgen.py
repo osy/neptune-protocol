@@ -2036,17 +2036,19 @@ def _gen_reencode_param(out, reg, field, prefix, fields_map, for_output=False,
             cnt = get_count_expr(field, prefix, fields_map)
         if cnt is None:
             return
+        wire_cnt = cnt if for_output else (
+            f'npt_counted_pointer_wire_count({acc}, (uint64_t)({cnt}))')
         base = reg.resolve_alias_chain(field.type_name)
         if base in PRIMITIVE_NAMES or reg.is_enum(field):
             out.write(f'{ind}if ({acc}) {{\n')
-            out.write(f'{ind}    npt_encode_array_count(&enc, {cnt});\n')
+            out.write(f'{ind}    npt_encode_array_count(&enc, {wire_cnt});\n')
             out.write(f'{ind}    npt_encode_{field.type_name}_array(&enc, {acc}, {cnt});\n')
             out.write(f'{ind}}} else {{\n')
             out.write(f'{ind}    npt_encode_array_count(&enc, 0);\n')
             out.write(f'{ind}}}\n')
         else:
             out.write(f'{ind}if ({acc}) {{\n')
-            out.write(f'{ind}    npt_encode_array_count(&enc, {cnt});\n')
+            out.write(f'{ind}    npt_encode_array_count(&enc, {wire_cnt});\n')
             out.write(f'{ind}    for (uint32_t _i = 0; _i < (uint32_t)({cnt}); _i++)\n')
             out.write(f'{ind}        npt_encode_{field.type_name}(&enc, &{acc}[_i]);\n')
             out.write(f'{ind}}} else {{\n')

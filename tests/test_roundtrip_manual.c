@@ -1508,6 +1508,67 @@ static int test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_malformed(void)
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* Counted pointer presence with zero logical length                  */
+/* ------------------------------------------------------------------ */
+
+static int test_manual_counted_pointer_present_zero(void)
+{
+    D3D12_ROOT_SIGNATURE_DESC orig;
+    memset(&orig, 0, sizeof(orig));
+
+    D3D12_ROOT_PARAMETER dummy;
+    memset(&dummy, 0, sizeof(dummy));
+
+    orig.NumParameters = 0;
+    orig.pParameters = &dummy;      /* present + logical count 0 */
+    orig.NumStaticSamplers = 0;
+    orig.pStaticSamplers = NULL;    /* absent + logical count 0 */
+
+    size_t w1_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC(&orig, 0);
+    uint8_t *w1 = (uint8_t *)calloc(1, w1_size ? w1_size : 1);
+    struct npt_cs_encoder enc1 = npt_test_encoder_init(w1, w1_size);
+    npt_encode_D3D12_ROOT_SIGNATURE_DESC(&enc1, &orig);
+    size_t w1_actual = npt_test_encoder_written(&enc1, w1);
+
+    D3D12_ROOT_SIGNATURE_DESC decoded;
+    memset(&decoded, 0, sizeof(decoded));
+    struct npt_cs_decoder dec = npt_test_decoder_init(w1, w1_actual);
+    npt_decode_D3D12_ROOT_SIGNATURE_DESC(&dec, &decoded);
+
+    int result = 0;
+
+    if (!decoded.pParameters || decoded.NumParameters != 0) {
+        fprintf(stderr,
+                "FAIL: present zero-length counted pointer lost presence "
+                "(pParameters=%p NumParameters=%u)\n",
+                (void *)decoded.pParameters, decoded.NumParameters);
+        result = -1;
+    }
+
+    if (decoded.pStaticSamplers != NULL ||
+        decoded.NumStaticSamplers != 0) {
+        fprintf(stderr,
+                "FAIL: absent zero-length counted pointer became present\n");
+        result = -1;
+    }
+
+    size_t w2_size = npt_sizeof_D3D12_ROOT_SIGNATURE_DESC(&decoded, 0);
+    uint8_t *w2 = (uint8_t *)calloc(1, w2_size ? w2_size : 1);
+    struct npt_cs_encoder enc2 = npt_test_encoder_init(w2, w2_size);
+    npt_encode_D3D12_ROOT_SIGNATURE_DESC(&enc2, &decoded);
+    size_t w2_actual = npt_test_encoder_written(&enc2, w2);
+
+    if (npt_wire_compare("counted pointer present + zero length",
+                         w1, w1_actual, w2, w2_actual))
+        result = -1;
+
+    npt_test_cleanup(&dec);
+    free(w1);
+    free(w2);
+    return result;
+}
+
 static const struct manual_test_entry manual_tests[] = {
     { "D3D12_PIPELINE_STATE_STREAM_DESC (mesh pipeline records)",
       test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_mesh },
@@ -1535,6 +1596,8 @@ static const struct manual_test_entry manual_tests[] = {
       test_manual_D3D12_ROOT_PARAMETER1_Constants },
     { "D3D12_ROOT_SIGNATURE_DESC",
       test_manual_D3D12_ROOT_SIGNATURE_DESC },
+    { "counted pointer present + zero length",
+      test_manual_counted_pointer_present_zero },
     { "D3D12_ROOT_SIGNATURE_DESC1",
       test_manual_D3D12_ROOT_SIGNATURE_DESC1 },
     { "D3D12_ROOT_SIGNATURE_DESC2",
