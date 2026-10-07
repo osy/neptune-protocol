@@ -268,6 +268,28 @@ static int test_guest_unsupported_reply_DRED_decode(void)
 
 typedef int (*guest_manual_test_func)(void);
 
+/* A NULL COM input array with a non-zero count is encoded as count 0, so
+ * its size must not include the count's handle ids: the header's
+ * cmd_size has to equal the bytes actually written. */
+static int test_guest_PSSetShaderResources_null_views_nonzero_count(void)
+{
+    uint8_t buf[256] = {0};
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    npt_encode_ID3D11DeviceContext_PSSetShaderResources(&enc, 0, 0xDEAD,
+                                                         0, 4, NULL);
+    size_t written = npt_test_encoder_written(&enc, buf);
+    size_t sized = npt_sizeof_ID3D11DeviceContext_PSSetShaderResources(0, 4, NULL);
+    const struct npt_command_header *h = (const struct npt_command_header *)buf;
+
+    if (sized != written || h->cmd_size != written) {
+        fprintf(stderr, "FAIL: PSSetShaderResources NULL x4: sizeof=%zu "
+                "header cmd_size=%u written=%zu\n",
+                sized, (unsigned)h->cmd_size, written);
+        return -1;
+    }
+    return 0;
+}
+
 struct guest_manual_test_entry {
     const char *name;
     guest_manual_test_func func;
@@ -278,6 +300,8 @@ static const struct guest_manual_test_entry guest_manual_tests[] = {
       test_guest_OMSetBlendState_null_BlendFactor },
     { "guest encode ID3D12GraphicsCommandList::OMSetBlendFactor NULL BlendFactor",
       test_guest_OMSetBlendFactor_null_BlendFactor },
+    { "guest encode ID3D11DeviceContext::PSSetShaderResources NULL views, count 4",
+      test_guest_PSSetShaderResources_null_views_nonzero_count },
     { "guest reply size upper-bound invariant (meta)",
       test_guest_reply_size_upper_bound_meta },
     { "guest decode DRED GetAutoBreadcrumbsOutput unsupported reply default",
