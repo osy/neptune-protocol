@@ -15,13 +15,20 @@
 #include "npt_protocol_client_${family}.h"
 % endfor
 
+/* Indexed by npt_object_type_family[] / struct npt_com_family::index. */
+const struct npt_com_family *const npt_com_families[NPT_IFACE_FAMILY_COUNT] = {
+% for family in ALL_FAMILIES:
+    [NPT_IFACE_FAMILY_${family.upper()}] = &npt_com_family_${family},
+% endfor
+};
+
 void
 npt_com_init_default_ctors(void)
 {
-    /* Populate every per-interface default vtable.  Must run before
-     * any client_create call so the wrapper has a usable vtbl. */
-% for iface in ALL_INTERFACES:
-    npt_${iface.name.lower()}_install_default_vtbl();
+    /* Populate every family's vtable.  Must run before any client_create
+     * call so the wrapper has a usable vtbl. */
+% for family in ALL_FAMILIES:
+    npt_com_family_${family}.vtbl_install();
 % endfor
 
     /* Register every default constructor in the IID -> ctor table. */

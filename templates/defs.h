@@ -202,6 +202,29 @@ static const npt_object_type npt_object_type_parent[NPT_OBJECT_TYPE_COUNT] = {
 };
 
 /* ================================================================== */
+/* Object type -> interface family                                     */
+/* ================================================================== */
+/*
+ * A family is one logical interface across its versions (ID3D11Device
+ * .. ID3D11Device5).  Ids are dense, in sorted family-name order, and
+ * index the client's npt_com_families[].  The host answers a getter
+ * with an id it already holds for the object only when that id's type
+ * is in the requested type's family, or is derived from it.
+ */
+% for fam in GEN.family_names():
+#define NPT_IFACE_FAMILY_${fam.upper()}  ${GEN.family_index(fam)}u
+% endfor
+#define NPT_IFACE_FAMILY_COUNT  ${len(GEN.family_names())}u
+
+static const uint16_t npt_object_type_family[NPT_OBJECT_TYPE_COUNT] = {
+% for iface in INTERFACES:
+% if iface.uuid and iface.name != 'IUnknown':
+    [NPT_OBJECT_TYPE_${iface.name.upper()}] = NPT_IFACE_FAMILY_${iface.family.upper()},
+% endif
+% endfor
+};
+
+/* ================================================================== */
 /* IID -> object type lookup                                           */
 /* ================================================================== */
 /*
@@ -245,6 +268,21 @@ npt_object_type_from_iid(const GUID *iid)
             return table[i].type;
     }
     return NPT_OBJECT_TYPE_IUNKNOWN;
+}
+
+/* The IID of an object type; NULL for a type the registry does not
+ * name (0 and retired id slots). */
+static inline const GUID *
+npt_iid_from_object_type(npt_object_type type)
+{
+    switch (type) {
+% for iface in INTERFACES:
+% if iface.uuid:
+    case NPT_OBJECT_TYPE_${iface.name.upper()}: return &NPT_IID_${iface.name};
+% endif
+% endfor
+    default: return NULL;
+    }
 }
 
 #endif /* NPT_PROTOCOL_DEFS_H */

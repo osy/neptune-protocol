@@ -2397,6 +2397,48 @@ class Gen:
         base = self.reg.resolve_alias_chain(type_name)
         return f'NPT_OBJECT_TYPE_{base.upper()}'
 
+    # ---- interface families ----------------------------------------
+    # A family is one logical interface across its versions
+    # (ID3D11Device .. ID3D11Device5): a linear chain, each tier
+    # deriving from the one before.  Every tier's wrapper carries the
+    # family's one vtable, as wide as the last tier.
+
+    def family_tiers(self, interfaces):
+        """The uuid-bearing interfaces of one family, root first.  Raises
+        when the family is not a linear chain, which the one-vtable
+        model relies on."""
+        tiers = sorted((i for i in interfaces if i.uuid),
+                       key=lambda i: i.total_vtable_count)
+        for prev, cur in zip(tiers, tiers[1:]):
+            if cur.parent is not prev:
+                raise RuntimeError(
+                    f'family {cur.family}: {cur.name} does not derive from '
+                    f'{prev.name}; a family must be a linear chain of tiers')
+        return tiers
+
+    def family_ancestor_names(self, tiers):
+        """IIDs every tier of the family answers QueryInterface for
+        besides its own chain: IUnknown and the interfaces above the
+        family's root, topmost first."""
+        return tiers[0].parent_iid_chain_names()[:-1]
+
+    def family_index(self, family_name):
+        """Dense id of a family among those with uuid-bearing members,
+        in sorted-name order; indexes npt_com_families[] and is what
+        npt_object_type_family[] holds."""
+        if not hasattr(self, '_family_ids'):
+            names = set()
+            for iface in self.reg.interfaces:
+                if iface.uuid and iface.name != 'IUnknown':
+                    names.add(iface.family)
+            self._family_ids = {n: i for i, n in enumerate(sorted(names))}
+        return self._family_ids[family_name]
+
+    def family_names(self):
+        self.family_index(next(i.family for i in self.reg.interfaces
+                               if i.uuid and i.name != 'IUnknown'))
+        return sorted(self._family_ids, key=self._family_ids.get)
+
     def parent_interface_name(self, iface):
         """Return the name of the parent interface, or None if the
         parent is IUnknown or the root.  Used by the parent table

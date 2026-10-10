@@ -107,51 +107,80 @@ def fallback_ret(method):
     return f'({method.return_type}){{0}}'
 %>\
 
-% for iface in INTERFACES:
 <%
-    iface_lower = iface.name.lower()
-    chain_methods = list(iface.iter_vtable_methods())
-    own_methods = iface.methods
-    parent_chain_names = iface.parent_iid_chain_names()
+    tiers = GEN.family_tiers(INTERFACES)
+    widest = tiers[-1]
+    widest_lower = widest.name.lower()
+    ancestor_names = GEN.family_ancestor_names(tiers)
 %>\
 
 /* ================================================================== */
-/* ${iface.name}                                                       */
+/* Family ${GROUP_NAME}                                                */
 /* ================================================================== */
 
-/* Parent IID chain for QueryInterface fast-path.  NULL-terminated list of
- * IID pointers; QI returns self for any IID in this list. */
-static const GUID *const npt_${iface_lower}_parent_iids[] = {
-% for n in parent_chain_names:
+/* The tiers, root first; an interface this family answers QueryInterface
+ * for is one of these up to the wrapper's confirmed tier, or one of the
+ * ancestors above the root. */
+static const GUID *const npt_com_family_${GROUP_NAME}_tiers[] = {
+% for t in tiers:
+    &NPT_IID_${t.name},
+% endfor
+    NULL,
+};
+
+static const npt_object_type npt_com_family_${GROUP_NAME}_tier_types[] = {
+% for t in tiers:
+    NPT_OBJECT_TYPE_${t.name.upper()},
+% endfor
+};
+
+static const GUID *const npt_com_family_${GROUP_NAME}_ancestors[] = {
+% for n in ancestor_names:
     &NPT_IID_${n},
 % endfor
     NULL,
 };
 
+const struct npt_com_family npt_com_family_${GROUP_NAME} = {
+    .name = "${GROUP_NAME}",
+    .index = NPT_IFACE_FAMILY_${GROUP_NAME.upper()},
+    .tier_iids = npt_com_family_${GROUP_NAME}_tiers,
+    .tier_types = npt_com_family_${GROUP_NAME}_tier_types,
+    .tier_count = ${len(tiers)},
+    .ancestor_iids = npt_com_family_${GROUP_NAME}_ancestors,
+    .vtbl = (const void **)&npt_${widest_lower}_default_vtbl_storage,
+    .vtbl_install = npt_${widest_lower}_install_default_vtbl,
+};
+
 HRESULT NPT_STDMETHODCALLTYPE
-npt_${iface_lower}_default_QueryInterface(void *self, REFIID riid, void **ppvObject)
+npt_${GROUP_NAME}_default_QueryInterface(void *self, REFIID riid, void **ppvObject)
 {
-    HRESULT hr = npt_com_default_query_interface_chain(
-        self, riid, ppvObject, npt_${iface_lower}_parent_iids);
-    if (hr == NPT_S_OK)
-        return hr;
-    /* Derived/sibling IIDs are resolved against the host object, one
-     * wire round trip per (object, IID) lifetime: the runtime memoizes
-     * the verdict and the wrapper on `self` (npt_com.c). */
-    return npt_com_query_interface_host(self, riid, ppvObject);
+    return npt_com_query_interface_family(self, riid, ppvObject);
 }
 
 ULONG NPT_STDMETHODCALLTYPE
-npt_${iface_lower}_default_AddRef(void *self)
+npt_${GROUP_NAME}_default_AddRef(void *self)
 {
     return npt_com_default_addref(self);
 }
 
 ULONG NPT_STDMETHODCALLTYPE
-npt_${iface_lower}_default_Release(void *self)
+npt_${GROUP_NAME}_default_Release(void *self)
 {
     return npt_com_default_release(self);
 }
+
+% for iface in INTERFACES:
+<%
+    iface_lower = iface.name.lower()
+    chain_methods = list(iface.iter_vtable_methods())
+    own_methods = iface.methods
+    tier_index = tiers.index(iface)
+%>\
+
+/* ================================================================== */
+/* ${iface.name} (tier ${tier_index})                                  */
+/* ================================================================== */
 
 % for method in own_methods:
 <%
@@ -453,19 +482,20 @@ ${a}${',' if i < len(call_args(method)) - 1 else ''}\
 % endif
 % endfor
 
+% if iface is widest:
 void
 npt_${iface_lower}_fill_default_vtbl(struct npt_${iface_lower}_client_vtbl *dst)
 {
-    dst->QueryInterface = npt_${iface_lower}_default_QueryInterface;
-    dst->AddRef         = npt_${iface_lower}_default_AddRef;
-    dst->Release        = npt_${iface_lower}_default_Release;
+    dst->QueryInterface = npt_${GROUP_NAME}_default_QueryInterface;
+    dst->AddRef         = npt_${GROUP_NAME}_default_AddRef;
+    dst->Release        = npt_${GROUP_NAME}_default_Release;
 % for owner, method in chain_methods:
     dst->${method.name} = ${thunk_name(owner.name, method.name)};
 % endfor
 }
 
 /*
- * Per-interface default vtbl storage.  Populated by
+ * The family's vtable.  Populated by
  * npt_${iface_lower}_install_default_vtbl(), which is called once at
  * runtime init time from the global client_table init function.
  */
@@ -477,6 +507,7 @@ npt_${iface_lower}_install_default_vtbl(void)
     npt_${iface_lower}_fill_default_vtbl(&npt_${iface_lower}_default_vtbl_storage);
 }
 
+% endif
 void *
 npt_${iface_lower}_client_create(struct npt_device *dev, uint64_t host_id)
 {
@@ -484,8 +515,10 @@ npt_${iface_lower}_client_create(struct npt_device *dev, uint64_t host_id)
     if (!p)
         return NULL;
     npt_com_base_init(p,
-        (const void **)&npt_${iface_lower}_default_vtbl_storage,
+        (const void **)&npt_${widest_lower}_default_vtbl_storage,
         dev, host_id);
+    p->family = &npt_com_family_${GROUP_NAME};
+    p->tier = ${tier_index};
     return p;
 }
 

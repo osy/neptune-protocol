@@ -17,6 +17,7 @@
 #define NPT_PROTOCOL_CLIENT_${GUARD}_H
 
 #include "npt_protocol_guest_${GROUP_NAME}.h"
+#include "npt_protocol_client_table.h"
 <%
 # Collect parent families (for non-self-family parents) so we can include
 # their client headers and get the extern thunk declarations for the
@@ -68,11 +69,37 @@ def ret_type(method):
     return GEN.ret_type_str(method.return_type)
 %>\
 
+<%
+    # One logical interface across its versions: every tier's wrapper
+    # carries the last tier's vtable (GEN.family_tiers checks the chain).
+    tiers = GEN.family_tiers(INTERFACES)
+    widest = tiers[-1]
+    widest_lower = widest.name.lower()
+%>\
+/* ================================================================== */
+/* Family ${GROUP_NAME}: ${', '.join(t.name for t in tiers)}
+/* ================================================================== */
+
+/* IUnknown thunks shared by every tier.  QueryInterface answers from
+ * the wrapper's family and confirmed tier (npt_com_query_interface_family);
+ * AddRef/Release route through the runtime helpers. */
+extern HRESULT NPT_STDMETHODCALLTYPE
+npt_${GROUP_NAME}_default_QueryInterface(void *self, REFIID riid, void **ppvObject);
+extern ULONG NPT_STDMETHODCALLTYPE
+npt_${GROUP_NAME}_default_AddRef(void *self);
+extern ULONG NPT_STDMETHODCALLTYPE
+npt_${GROUP_NAME}_default_Release(void *self);
+
+/* The family's tiers (root first), the interfaces above its root, and
+ * its one vtable; the runtime reads it through npt_com_base.family. */
+extern const struct npt_com_family npt_com_family_${GROUP_NAME};
+
 % for iface in INTERFACES:
 <%
     iface_lower = iface.name.lower()
     chain_methods = list(iface.iter_vtable_methods())
     own_methods = [(iface, m) for m in iface.methods]
+    tier_index = tiers.index(iface)
 %>\
 
 /* ================================================================== */
@@ -107,32 +134,36 @@ extern ${ret_type(method)} NPT_STDMETHODCALLTYPE
 ${thunk_name(iface.name, method.name)}(${fmt_param_list(method)});
 % endfor
 
-/* Default IUnknown thunks for ${iface.name}.  AddRef/Release route through
- * the runtime helpers; QueryInterface walks this interface's parent IID
- * chain, falling through to a host COM_QUERY_INTERFACE round-trip on miss. */
-extern HRESULT NPT_STDMETHODCALLTYPE
-npt_${iface_lower}_default_QueryInterface(void *self, REFIID riid, void **ppvObject);
-extern ULONG NPT_STDMETHODCALLTYPE
-npt_${iface_lower}_default_AddRef(void *self);
-extern ULONG NPT_STDMETHODCALLTYPE
-npt_${iface_lower}_default_Release(void *self);
+% if iface_lower != GROUP_NAME:
+/* The family's IUnknown thunks under this tier's name. */
+#define npt_${iface_lower}_default_QueryInterface npt_${GROUP_NAME}_default_QueryInterface
+#define npt_${iface_lower}_default_AddRef         npt_${GROUP_NAME}_default_AddRef
+#define npt_${iface_lower}_default_Release        npt_${GROUP_NAME}_default_Release
 
+% endif
+% if iface is widest:
 /* Populate `dst` with all default thunks (own + inherited via the
  * extern decls from the parent client header).  Hand-written code can
  * then patch individual slots before installing the vtable. */
 extern void
 npt_${iface_lower}_fill_default_vtbl(struct npt_${iface_lower}_client_vtbl *dst);
 
-/* Per-interface default vtbl storage shared by all client instances of
- * this interface.  Populated once at runtime init by
- * npt_${iface_lower}_install_default_vtbl() (called from the global
- * npt_com_init_default_ctors populator). */
+/* The family's one vtable, installed on every tier's wrapper (a lower
+ * tier's struct is a prefix of this one).  Populated once at runtime
+ * init by npt_${iface_lower}_install_default_vtbl() (called from the
+ * global npt_com_init_default_ctors populator); an override patched
+ * into it reaches every tier. */
 extern struct npt_${iface_lower}_client_vtbl npt_${iface_lower}_default_vtbl_storage;
 extern void
 npt_${iface_lower}_install_default_vtbl(void);
+% else:
+/* This tier's wrapper carries the family vtable, ${widest.name}'s. */
+#define npt_${iface_lower}_default_vtbl_storage npt_${widest_lower}_default_vtbl_storage
+% endif
 
 /* Default constructor for the wrapper cache.  Allocates a bare
- * `struct npt_com_base`, installs the default vtable, and returns it. */
+ * `struct npt_com_base` carrying the family vtable, family and tier
+ * ${tier_index}, and returns it. */
 extern void *
 npt_${iface_lower}_client_create(struct npt_device *dev, uint64_t host_id);
 
