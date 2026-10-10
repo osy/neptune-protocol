@@ -329,6 +329,17 @@ npt_cs_handle_register_failed_guest_id(struct npt_dispatch_context *ctx,
    (void)ctx; (void)guest_id;
 }
 
+/* Defined in test_roundtrip_manual.c, after npt_protocol_defs.h has
+ * declared struct npt_wire_object_ref: answers every slot as a fresh
+ * registration (ref = {guest_id, guest_id, type}, zero for NULL). */
+struct npt_wire_object_ref;
+void
+npt_cs_handle_register_canonical_guest_id(struct npt_dispatch_context *ctx,
+                                          npt_object_id guest_id,
+                                          void *obj,
+                                          npt_object_type type,
+                                          struct npt_wire_object_ref *ref);
+
 /* Test harness stub for the guest-side id allocator (the generated
  * encoders call it).  Monotonic counter is fine for test purposes; no
  * coordination with a real runtime. */

@@ -12,6 +12,9 @@
 #include "npt_protocol_client_${GROUP_NAME}.h"
 #include "npt_com.h"
 
+#include <stdlib.h>
+#include <string.h>
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-variable"
@@ -27,14 +30,13 @@ def call_args(method):
     """Args to pass to the generated npt_call_/npt_async_ function."""
     return ['npt_com_self_ring(self)', 'npt_com_self_id(self)'] + [p.name for p in method.params]
 
-def find_riid_param(method):
-    """Find an IID input parameter (used by methods like GetBuffer /
-    OpenSharedResource that take an out-param void** along with a
-    runtime IID).  Returns the parameter name or None."""
-    for p in method.params:
-        if p.input and not p.output and p.type_name == 'IID':
-            return p.name
-    return None
+def riid_params(method):
+    """The IID input parameters, in order.  The i-th one names the
+    interface of the i-th void ** output (GetBuffer(riid, ppv),
+    GetCurrentResourceAndCommandQueue(riidResource, ppvResource,
+    riidQueue, ppvQueue), ...)."""
+    return [p.name for p in method.params
+            if p.input and not p.output and p.type_name == 'IID']
 
 def _count_c_expr(method, count_field_name):
     """Resolve a count field name to a C expression.
@@ -70,15 +72,15 @@ def output_com_handle_params(method):
     outputs WITHOUT an accompanying REFIID can't be wrapped and are
     skipped.
     """
-    riid_name = find_riid_param(method)
+    riids = riid_params(method)
     out = []
     for p in method.params:
         if p.output and p.is_com_handle and p.indirection >= 1:
             c_type = p.type_name
             if c_type == 'void':
-                if riid_name is None:
+                if not riids:
                     continue
-                iid_expr = riid_name  # already a const GUID *
+                iid_expr = riids.pop(0)  # already a const GUID *
             else:
                 iid_expr = '&NPT_IID_' + GEN.reg.resolve_alias_chain(c_type)
             # Determine array count from the registry's count field.
@@ -166,6 +168,18 @@ npt_${iface_lower}_default_Release(void *self)
     # HRESULT the guard is NPT_SUCCEEDED(_ret); a pure-async Create
     # guards on the stashed id alone.
     needs_sync = always_sync
+    # canonical (registry): the reply names the id each returned object
+    # is registered under, so the thunk resolves every slot through the
+    # runtime's canonical wrap instead of building a wrapper on the id
+    # it minted; "memo" also keeps the answer on `self`.
+    canonical = GEN.method_is_canonical(method)
+    memo = GEN.method_canonical(method) == 'memo'
+    memo_key = (f'NPT_CMD_TYPE(255, NPT_IFACE_ID_{iface.name}, '
+                f'NPT_METHOD_{fname})')
+    ok_guard = ('NPT_SUCCEEDED((HRESULT)_ret) && '
+                if has_ret and method.return_type == 'HRESULT' else '')
+    memo_return = ('return;' if not has_ret
+                   else 'return (HRESULT)0 /* S_OK */;')
 
     # Safety check: output COM handle arrays use their count expression
     # to iterate and wrap elements after npt_call_ returns.  If the
@@ -196,6 +210,20 @@ npt_${iface_lower}_default_Release(void *self)
                         f'written override, or add HRESULT-guarded wrapping to '
                         f'the client template.'
                     )
+    if canonical:
+        # The reply decoder sizes each array's refs by the count as the
+        # caller passed it; an output count decoded before the array
+        # would already hold the host's value.
+        for ah_p, ah_ct, ah_iid, ah_ce in array_handles:
+            names = [p.name for p in method.params]
+            for cp in method.params:
+                if (cp.name == ah_p.count and cp.output
+                        and names.index(cp.name) < names.index(ah_p.name)):
+                    raise RuntimeError(
+                        f'{iface.name}::{method.name}: canonical output '
+                        f'array \'{ah_p.name}\' is counted by output '
+                        f'\'{cp.name}\' declared before it; the reply '
+                        f'decoder would size the refs by the host\'s count')
 %>\
 % if method.skip_default:
 /* skip_default: ${iface.name}::${method.name} -- override required.
@@ -245,10 +273,55 @@ void *self\
     # After npt_async_ / npt_call_ returns, the client thunk reads that
     # slot back as a uint64_t id and converts it to a proper wrapper via
     # npt_com_get_or_wrap.  Both the sync and async paths share this
-    # post-call "stash -> wrap" conversion.
+    # post-call "stash -> wrap" conversion.  A canonical method reads
+    # the registered ids from the reply refs instead.
     single_handles = [(p, ct, iid, ce) for p, ct, iid, ce in out_handles if ce is None]
     array_handles  = [(p, ct, iid, ce) for p, ct, iid, ce in out_handles if ce is not None]
 %>\
+% if memo:
+<%
+    mp, mc_type, miid_expr, _ = single_handles[0]
+%>\
+    if (${mp.name}) {
+        void *_memo = npt_com_memo_lookup(self, ${memo_key}, ${miid_expr});
+        if (_memo) {
+            *${mp.name} = (${mc_type} *)_memo;
+            ${memo_return}
+        }
+    }
+% endif
+% if canonical and array_handles:
+    /* One reply ref per output slot, in parameter order: one per single
+     * output, the capacity the caller passed per array. */
+% for p, c_type, iid_expr, count_expr in array_handles:
+    const UINT _cap_${p.name} = ${p.name} ? (UINT)(${count_expr}) : 0u;
+% endfor
+    struct npt_wire_object_ref _refs_stack[NPT_CLIENT_REF_STACK_SLOTS];
+    struct npt_wire_object_ref *_refs = _refs_stack;
+    size_t _ref_cap = ${len(single_handles)}\
+% for p, c_type, iid_expr, count_expr in array_handles:
+ + _cap_${p.name}\
+% endfor
+;
+    if (_ref_cap > NPT_CLIENT_REF_STACK_SLOTS)
+        _refs = (struct npt_wire_object_ref *)calloc(_ref_cap, sizeof(*_refs));
+    else
+        memset(_refs_stack, 0, sizeof(_refs_stack));
+    if (!_refs) {
+% for p, c_type, iid_expr, _ in single_handles:
+        if (${p.name})
+            *${p.name} = NULL;
+% endfor
+% for p, c_type, iid_expr, count_expr in array_handles:
+        for (UINT _i = 0; _i < _cap_${p.name}; _i++)
+            ${p.name}[_i] = NULL;
+% endfor
+        ${'return;' if not has_ret else 'return (HRESULT)0x8007000E /* E_OUTOFMEMORY */;' if method.return_type == 'HRESULT' else f'return {fallback_ret(method)};'}
+    }
+% elif canonical:
+    struct npt_wire_object_ref _refs[${len(single_handles)}];
+    memset(_refs, 0, sizeof(_refs));
+% endif
 % if single_handles:
 % for p, c_type, iid_expr, _ in single_handles:
     ${c_type} *_raw_${p.name} = NULL;
@@ -264,13 +337,18 @@ void *self\
 % endfor
 % endif
 % if always_sync:
+<%
+    sync_args = call_args(method) + (
+        ['_refs', '_ref_cap' if array_handles else str(len(single_handles))]
+        if canonical else [])
+%>\
 % if has_ret:
     ${method.return_type} _ret = npt_call_${fname}(\
 % else:
     npt_call_${fname}(\
 % endif
-% for i, a in enumerate(call_args(method)):
-${a}${',' if i < len(call_args(method)) - 1 else ''}\
+% for i, a in enumerate(sync_args):
+${a}${',' if i < len(sync_args) - 1 else ''}\
 % endfor
 );
 % else:
@@ -280,7 +358,40 @@ ${a}${',' if i < len(call_args(method)) - 1 else ''}\
 % endfor
 );
 % endif
-% if single_handles:
+% if canonical:
+    /* The reply's refs come in parameter order: one per single output,
+     * then each array's capacity, interleaved as the parameters are. */
+    size_t _ref_i = 0;
+% for p, c_type, iid_expr, count_expr in out_handles:
+% if count_expr is None:
+    if (_orig_${p.name}) {
+        if (${ok_guard}_refs[_ref_i].id)
+            *_orig_${p.name} = (${c_type} *)npt_com_wrap_canonical(
+                npt_com_self_device(self), &_refs[_ref_i], ${iid_expr});
+        else
+            *_orig_${p.name} = NULL;
+% if memo:
+        if (*_orig_${p.name})
+            npt_com_memo_store(self, ${memo_key}, ${iid_expr},
+                               *_orig_${p.name});
+% endif
+    }
+    _ref_i++;
+% else:
+    for (UINT _i = 0; _i < _cap_${p.name}; _i++, _ref_i++) {
+        if (${ok_guard}_refs[_ref_i].id)
+            ${p.name}[_i] = (${c_type} *)npt_com_wrap_canonical(
+                npt_com_self_device(self), &_refs[_ref_i], ${iid_expr});
+        else
+            ${p.name}[_i] = NULL;
+    }
+% endif
+% endfor
+% if array_handles:
+    if (_refs != _refs_stack)
+        free(_refs);
+% endif
+% elif single_handles:
 % for p, c_type, iid_expr, _ in single_handles:
     if (_orig_${p.name}) {
 % if needs_sync and has_ret and method.return_type == 'HRESULT':
@@ -303,7 +414,7 @@ ${a}${',' if i < len(call_args(method)) - 1 else ''}\
     }
 % endfor
 % endif
-% if array_handles:
+% if array_handles and not canonical:
     /* Wrap output COM handle arrays in-place.  The encoder stashed the
      * guest-allocated ids in each slot before the submit; convert them
      * to wrappers now. */

@@ -165,7 +165,7 @@ class Field:
 
 class Method:
     __slots__ = ('name', 'return_type', 'params', 'wire_index', 'id',
-                 'skip_default')
+                 'skip_default', 'canonical')
 
     def __init__(self, raw, index):
         self.name = raw['name']
@@ -174,13 +174,14 @@ class Method:
                        for i, p in enumerate(raw.get('params', []))]
         self.wire_index = raw.get('index', index)
         self.id = raw.get('id')
+        self.canonical = raw.get('canonical')
 
 
 class TypeInfo:
     __slots__ = ('name', 'primitive', 'fields', 'methods', 'parent_name',
                  'uuid', 'uuid_hash', 'uuid_bytes', 'return_type', 'group',
                  'id', 'params', 'alias_target', 'is_anonymous', 'value',
-                 'manual_codec')
+                 'manual_codec', 'canonical')
 
     def __init__(self, name, primitive):
         self.name = name
@@ -199,6 +200,7 @@ class TypeInfo:
         self.is_anonymous = False
         self.value = None
         self.manual_codec = False
+        self.canonical = None
 
     @property
     def category(self):
@@ -280,6 +282,7 @@ class Registry:
                 t.return_type = raw.get('return')
                 t.group = raw.get('group')
                 t.id = raw.get('id')
+                t.canonical = raw.get('canonical')
                 t.params = [Field(p, parent_name=name, index=i)
                             for i, p in enumerate(raw.get('params', []))]
             elif cat == 'const':
@@ -1251,6 +1254,53 @@ def collect_testable_methods(reg):
     return result
 
 
+def _is_output_com_handle(p):
+    return (p.handle == 'com' and p.indirection == 2 and p.output
+            and not p.input)
+
+
+def method_is_canonical(method):
+    """The registry's resolved `canonical` is true or "memo": the reply
+    carries one npt_wire_object_ref per output COM handle slot.  Mirrors
+    npt_registry.canonical_default -- keep the two in step: an
+    unannotated method is canonical unless its name starts with Create or
+    Open; a top-level function never is."""
+    if not any(_is_output_com_handle(p) for p in method.params):
+        return False
+    if getattr(method, 'group', None) is not None:
+        return False
+    explicit = getattr(method, 'canonical', None)
+    if explicit is not None:
+        return explicit in (True, 'memo')
+    return not method.name.startswith(('Create', 'Open'))
+
+
+def _gen_canonical_reply_refs_init(out, reg, params, fields_map, prefix):
+    """Fill a canonical method's reply refs the way the host's register
+    pass would, one per output COM handle slot."""
+    for p in params:
+        if not _is_output_com_handle(p):
+            continue
+        cnt = get_count_expr(p, prefix, fields_map)
+        if cnt:
+            out.write(f'    if ({prefix}{p.name}) {{\n')
+            out.write(f'        {prefix}_guest_id_count_{p.name} = (uint32_t)({cnt});\n')
+            out.write(f'        {prefix}_refs_{p.name} = npt_test_alloc('
+                      f'sizeof(struct npt_wire_object_ref) * (({cnt}) ? ({cnt}) : 1));\n')
+            out.write(f'        for (uint32_t _i = 0; _i < (uint32_t)({cnt}); _i++) {{\n')
+            out.write(f'            {prefix}_refs_{p.name}[_i].id = (uint64_t)npt_test_rand(&seed) + 1;\n')
+            out.write(f'            {prefix}_refs_{p.name}[_i].primary_id = (uint64_t)npt_test_rand(&seed) + 1;\n')
+            out.write(f'            {prefix}_refs_{p.name}[_i].type = npt_test_rand(&seed);\n')
+            out.write(f'            {prefix}_refs_{p.name}[_i].pad = 0;\n')
+            out.write(f'        }}\n')
+            out.write(f'    }}\n')
+        else:
+            out.write(f'    {prefix}_ref_{p.name}.id = (uint64_t)npt_test_rand(&seed) + 1;\n')
+            out.write(f'    {prefix}_ref_{p.name}.primary_id = (uint64_t)npt_test_rand(&seed) + 1;\n')
+            out.write(f'    {prefix}_ref_{p.name}.type = npt_test_rand(&seed);\n')
+            out.write(f'    {prefix}_ref_{p.name}.pad = 0;\n')
+
+
 def method_has_count_output(method):
     """Check if any output param has count_output."""
     for p in method.params:
@@ -1551,6 +1601,9 @@ def _gen_host_encode_reply(out, reg, iface, method, fname, is_toplevel, idx):
     # Handle count_output styles
     _gen_count_output_styles(out, reg, params, fields_map)
 
+    if method_is_canonical(method):
+        _gen_canonical_reply_refs_init(out, reg, params, fields_map, 'args.')
+
     # Use the generated npt_encode_{fname}_reply (host-side) which takes
     # a pointer to the npt_command_* struct.  Encode directly into buf
     # (caller provides a 1MB buffer) and report actual bytes written.
@@ -1835,8 +1888,10 @@ def _gen_count_output_styles(out, reg, params, fields_map):
 
 
 def _gen_reencode_param(out, reg, field, prefix, fields_map, for_output=False,
-                        indent=1):
-    """Generate re-encode code for a single param."""
+                        indent=1, canonical=False):
+    """Generate re-encode code for a single param.  `canonical`: the
+    method's reply carries the registered id of every output COM handle
+    slot (struct npt_wire_object_ref), read back from `_refs[_ref_i]`."""
     ind = '    ' * indent
     acc = f'{prefix}{field.name}'
 
@@ -1857,7 +1912,7 @@ def _gen_reencode_param(out, reg, field, prefix, fields_map, for_output=False,
         if t2:
             for inner in t2.fields:
                 _gen_reencode_param(out, reg, inner, prefix, fields_map,
-                                    for_output, indent)
+                                    for_output, indent, canonical)
         return
 
     if cls in ('COM_HANDLE', 'INTERFACE_REF'):
@@ -1871,7 +1926,21 @@ def _gen_reencode_param(out, reg, field, prefix, fields_map, for_output=False,
             # knows it.  The test harness must mirror the wire layout.
             cnt = get_count_expr(field, prefix, fields_map)
             if for_output:
-                # Reply side: no data on the wire for output COM handles.
+                # Reply side: a canonical method answers the slot's
+                # registered id; anything else carries nothing here.
+                if canonical:
+                    if cnt:
+                        out.write(f'{ind}{{\n')
+                        out.write(f'{ind}    const uint64_t _n = {acc} ? '
+                                  f'(uint64_t)({cnt}) : 0;\n')
+                        out.write(f'{ind}    npt_encode_array_count(&enc, _n);\n')
+                        out.write(f'{ind}    for (uint64_t _i = 0; _i < _n; _i++)\n')
+                        out.write(f'{ind}        npt_encode_npt_wire_object_ref('
+                                  f'&enc, &_refs[_ref_i++]);\n')
+                        out.write(f'{ind}}}\n')
+                    else:
+                        out.write(f'{ind}npt_encode_npt_wire_object_ref('
+                                  f'&enc, &_refs[_ref_i++]);\n')
                 return
             # Command side: re-encode the guest-allocated id(s) that
             # the decoder read into the args struct's shadow fields.
@@ -1915,9 +1984,18 @@ def _gen_reencode_param(out, reg, field, prefix, fields_map, for_output=False,
     if cls == 'COM_HANDLE_ARRAY':
         cnt = get_count_expr(field, prefix, fields_map)
         if for_output and field.output and field.indirection == 2:
-            # Phase-1 refactor: output COM handle arrays carry their
-            # guest-allocated ids in the COMMAND body, not the reply.
-            # The reply-side re-encoder emits nothing for them.
+            # Output COM handle arrays carry their guest-allocated ids in
+            # the COMMAND body; the reply carries the registered ids only
+            # for a canonical method.
+            if canonical:
+                out.write(f'{ind}{{\n')
+                out.write(f'{ind}    const uint64_t _n = {acc} ? '
+                          f'(uint64_t)({cnt}) : 0;\n')
+                out.write(f'{ind}    npt_encode_array_count(&enc, _n);\n')
+                out.write(f'{ind}    for (uint64_t _i = 0; _i < _n; _i++)\n')
+                out.write(f'{ind}        npt_encode_npt_wire_object_ref('
+                          f'&enc, &_refs[_ref_i++]);\n')
+                out.write(f'{ind}}}\n')
             return
         if not for_output and field.output and field.indirection == 2:
             # Command-side re-encode of an output COM handle array:
@@ -2340,6 +2418,40 @@ def _gen_guest_verify_reply(out, reg, iface, method, fname, is_toplevel, idx):
         else:
             out.write(f'    {ret_type} ret_val = 0;\n')
 
+    canonical = method_is_canonical(method)
+    if canonical:
+        # The reply refs are sized by each array's count as the caller
+        # passed it; an in/out count is still the caller's capacity when
+        # the array is decoded, so give it the host's style value here.
+        canonical_arrays = [p for p in params
+                            if _is_output_com_handle(p) and p.count]
+        count_names = {p.count for p in canonical_arrays
+                       if isinstance(p.count, str)}
+        for p in params:
+            if p.name in count_names and p.input and p.output \
+                    and p.indirection == 1:
+                out.write(f'    switch (style) {{\n')
+                out.write(f'    case NPT_STYLE_COUNT_ZERO_PTR_NONNULL:\n')
+                out.write(f'    case NPT_STYLE_COUNT_ZERO_PTR_NULL:\n')
+                out.write(f'        *p_{p.name} = 0; break;\n')
+                out.write(f'    case NPT_STYLE_COUNT_ONE:\n')
+                out.write(f'        *p_{p.name} = 1; break;\n')
+                out.write(f'    case NPT_STYLE_COUNT_NONZERO: default:\n')
+                out.write(f'        *p_{p.name} = 5; break;\n')
+                out.write(f'    }}\n')
+        singles = sum(1 for p in params
+                      if _is_output_com_handle(p) and not p.count)
+        out.write(f'    size_t _ref_cap = {singles};\n')
+        for p in canonical_arrays:
+            cnt = get_count_expr(p, 'p_', fields_map)
+            out.write(f'    if (p_{p.name})\n')
+            out.write(f'        _ref_cap += (size_t)({cnt});\n')
+        out.write(f'    struct npt_wire_object_ref *_refs = npt_test_alloc('
+                  f'sizeof(*_refs) * (_ref_cap ? _ref_cap : 1));\n')
+        out.write(f'    memset(_refs, 0, sizeof(*_refs) * (_ref_cap ? _ref_cap : 1));\n')
+        out.write(f'    size_t _ref_i = 0;\n')
+        out.write(f'    (void)_ref_i;\n')
+
     # Decode reply
     out.write(f'\n    struct npt_cs_decoder dec = npt_test_decoder_init(buf, size);\n')
 
@@ -2348,6 +2460,8 @@ def _gen_guest_verify_reply(out, reg, iface, method, fname, is_toplevel, idx):
         decode_args += f', p_{p.name}'
     if _has_ret:
         decode_args += ', &ret_val'
+    if canonical:
+        decode_args += ', _refs, _ref_cap'
     out.write(f'    npt_decode_{fname}_reply({decode_args});\n\n')
 
     # Re-encode for comparison
@@ -2377,12 +2491,14 @@ def _gen_guest_verify_reply(out, reg, iface, method, fname, is_toplevel, idx):
     for p in output_params:
         if p.count_output and ret_type == 'HRESULT':
             out.write(f'    if ((HRESULT)ret_val >= 0) {{\n')
-            _gen_reencode_reply_param(out, reg, p, 'p_', fields_map, indent=2)
+            _gen_reencode_reply_param(out, reg, p, 'p_', fields_map, indent=2,
+                                      canonical=canonical)
             out.write(f'    }} else {{\n')
             out.write(f'        npt_encode_array_count(&enc, 0);\n')
             out.write(f'    }}\n')
         else:
-            _gen_reencode_reply_param(out, reg, p, 'p_', fields_map, indent=1)
+            _gen_reencode_reply_param(out, reg, p, 'p_', fields_map, indent=1,
+                                      canonical=canonical)
 
     out.write(f'\n    size_t w2_actual = npt_test_encoder_written(&enc, w2);\n')
     out.write(f'    int result = npt_wire_compare("REPLY_{fname}", buf, size, w2, w2_actual);\n')
@@ -2392,11 +2508,12 @@ def _gen_guest_verify_reply(out, reg, iface, method, fname, is_toplevel, idx):
     out.write(f'}}\n\n')
 
 
-def _gen_reencode_reply_param(out, reg, field, prefix, fields_map, indent=1):
+def _gen_reencode_reply_param(out, reg, field, prefix, fields_map, indent=1,
+                              canonical=False):
     """Re-encode an output param for reply verification."""
     # Same logic as _gen_reencode_param but with for_output=True
     _gen_reencode_param(out, reg, field, prefix, fields_map,
-                        for_output=True, indent=indent)
+                        for_output=True, indent=indent, canonical=canonical)
 
 
 def _c_type_for_param(p):

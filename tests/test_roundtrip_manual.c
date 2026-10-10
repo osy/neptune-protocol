@@ -919,6 +919,22 @@ static int test_manual_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA(void)
  * encoder where it is sized.
  */
 
+void
+npt_cs_handle_register_canonical_guest_id(struct npt_dispatch_context *ctx,
+                                          npt_object_id guest_id,
+                                          void *obj,
+                                          npt_object_type type,
+                                          struct npt_wire_object_ref *ref)
+{
+    (void)ctx;
+    memset(ref, 0, sizeof(*ref));
+    if (!obj)
+        return;
+    ref->id = guest_id;
+    ref->primary_id = guest_id;
+    ref->type = (uint32_t)type;
+}
+
 static int test_manual_dispatch_OMGetBlendState(void)
 {
     /* CMD body: 1 uint64 guest_id for the output ppBlendState */
@@ -957,8 +973,9 @@ static int test_manual_dispatch_OMGetBlendState(void)
     npt_encode_ID3D11DeviceContext_OMGetBlendState_reply(&renc, &args);
     size_t reply_size = npt_test_encoder_written(&renc, reply_buf);
 
-    /* reply header (16) + array_count(8) + 4*FLOAT(16) + simple_pointer(8) + UINT(4) */
-    const size_t expected = sizeof(struct npt_reply_header) + 8 + 16 + 8 + 4;
+    /* reply header (16) + ppBlendState object ref (24) + array_count(8)
+     * + 4*FLOAT(16) + simple_pointer(8) + UINT(4) */
+    const size_t expected = sizeof(struct npt_reply_header) + 24 + 8 + 16 + 8 + 4;
     int result = (reply_size == expected) ? 0 : -1;
     if (result) {
         fprintf(stderr, "FAIL: OMGetBlendState reply size %zu != %zu\n",

@@ -312,6 +312,18 @@ class Gen:
                 and field.output
                 and not field.input)
 
+    def method_canonical(self, method):
+        """The registry's `canonical` value for a method or function
+        (False, True or 'memo'; None where nothing is returned)."""
+        return getattr(method, 'canonical', None)
+
+    def method_is_canonical(self, method) -> bool:
+        """Whether the reply names the id each returned object is
+        registered under (canonical=true or "memo").  Such a method
+        always takes a reply; its output COM handles ride in it as
+        struct npt_wire_object_ref, one per slot."""
+        return self.method_canonical(method) in (True, 'memo')
+
     def method_always_sync(self, method) -> bool:
         """
         Whether the guest thunk must wait for a reply.
@@ -335,13 +347,19 @@ class Gen:
         end-of-iteration with DXGI_ERROR_NOT_FOUND, and the deferred-fatal
         path would mask that into a fake S_OK and make the caller loop
         forever.
+
+        A canonical method (registry `canonical` true or "memo") replies
+        with the id each returned object is registered under, so it is
+        sync whatever else it returns.
         """
         has_non_handle_output = any(
             p.output and not self.is_output_com_handle(p)
             for p in method.params)
         has_ret = self.has_return(method.return_type)
         has_sync_ret = has_ret and method.return_type != 'HRESULT'
-        return has_non_handle_output or has_sync_ret or method.force_sync
+        return (has_non_handle_output or has_sync_ret
+                or getattr(method, 'force_sync', False)
+                or self.method_is_canonical(method))
 
     def method_is_staged(self, iface, method) -> bool:
         """
@@ -414,7 +432,7 @@ class Gen:
         return self.encode_field(field, prefix)
 
     def decode_input_param(self, field: NptField, prefix: str,
-                           indent: int = 1) -> str:
+                           indent: int = 1, canonical: bool = False) -> str:
         """Decode a command input parameter (host-side, temp alloc).
         Output-only fields are skipped — nothing is on the wire for them,
         EXCEPT output COM handles which now carry a guest-allocated id
@@ -441,6 +459,14 @@ class Gen:
                     f'!{prefix}_guest_ids_{field.name})) return;',
                     f'{ind}    if (_cnt) memset({prefix}{field.name}, 0, '
                     f'sizeof(void *) * _cnt);',
+                ] + ([
+                    f'{ind}    {prefix}_refs_{field.name} = _cnt ? '
+                    f'npt_cs_decoder_alloc_temp_array(dec, '
+                    f'sizeof(struct npt_wire_object_ref), _cnt) : NULL;',
+                    f'{ind}    if (_cnt && !{prefix}_refs_{field.name}) return;',
+                    f'{ind}    if (_cnt) memset({prefix}_refs_{field.name}, 0, '
+                    f'sizeof(struct npt_wire_object_ref) * _cnt);',
+                ] if canonical else []) + [
                     f'{ind}    for (uint64_t _i = 0; _i < _cnt; _i++) {{',
                     f'{ind}        uint64_t _gid;',
                     f'{ind}        npt_decode_uint64_t(dec, &_gid);',
@@ -477,36 +503,90 @@ class Gen:
             return ''
         return self._decode_output_alloc(field, prefix, indent)
 
-    def sizeof_output_param(self, field: NptField, prefix: str, dst: str) -> str:
+    def sizeof_output_param(self, field: NptField, prefix: str, dst: str,
+                            canonical: bool = False) -> str:
         """Sizeof for a reply output parameter.
 
         Uses for_output=True so that simple pointers are assumed non-NULL
         (the host always allocates output storage, even when the guest
         caller passed NULL for an optional param).  Output COM handles
-        are registered on the host under their pre-allocated guest_id
-        and do NOT ride along in the reply.
+        are registered on the host under their pre-allocated guest_id and
+        ride in the reply only for a canonical method, as one
+        npt_wire_object_ref per slot (an array: count + refs, the count
+        being the guest's capacity).
         """
         if self.is_output_com_handle(field):
-            return (f'/* skip {prefix}{field.name} (guest-allocated id, '
-                    f'registered host-side; not in reply) */')
+            if not canonical:
+                return (f'/* skip {prefix}{field.name} (guest-allocated id, '
+                        f'registered host-side; not in reply) */')
+            acc = self._acc(field, prefix)
+            count_expr = self._get_count_expr(field, prefix)
+            if count_expr:
+                return (f'{dst} += npt_sizeof_array_count(0) + '
+                        f'({acc} ? (size_t)({count_expr}) : 0) * '
+                        f'npt_sizeof_npt_wire_object_ref();'
+                        f'  /* {field.name}: registered ids */')
+            return (f'{dst} += npt_sizeof_npt_wire_object_ref();'
+                    f'  /* {field.name}: registered id */')
         if not field.output:
             return f'/* skip {prefix}{field.name} (input only) */'
         return self.sizeof_field(field, prefix, dst, for_output=True)
 
-    def encode_output_param(self, field: NptField, prefix: str) -> str:
+    def encode_output_param(self, field: NptField, prefix: str,
+                            canonical: bool = False) -> str:
         """Encode a reply output parameter (host-side)."""
         if self.is_output_com_handle(field):
-            return (f'/* skip {prefix}{field.name} (guest-allocated id, '
-                    f'registered host-side; not in reply) */')
+            if not canonical:
+                return (f'/* skip {prefix}{field.name} (guest-allocated id, '
+                        f'registered host-side; not in reply) */')
+            if self._get_count_expr(field, prefix):
+                return '\n'.join([
+                    f'{{',
+                    f'    const uint32_t _n = '
+                    f'{prefix}_guest_id_count_{field.name};',
+                    f'    npt_encode_array_count(enc, _n);',
+                    f'    for (uint32_t _i = 0; _i < _n; _i++)',
+                    f'        npt_encode_npt_wire_object_ref(enc, '
+                    f'&{prefix}_refs_{field.name}[_i]);',
+                    f'}}',
+                ])
+            return (f'npt_encode_npt_wire_object_ref(enc, '
+                    f'&{prefix}_ref_{field.name});')
         if not field.output:
             return f'/* skip {prefix}{field.name} (input only) */'
         return self.encode_field(field, prefix, for_output=True)
 
-    def decode_output_param(self, field: NptField, prefix: str) -> str:
-        """Decode a reply output parameter (guest-side)."""
+    def decode_output_param(self, field: NptField, prefix: str,
+                            canonical: bool = False) -> str:
+        """Decode a reply output parameter (guest-side).  A canonical
+        method's object refs land in the caller's `_refs` array of
+        `_ref_cap` entries, in parameter order, `_ref_i` being the
+        running index; a host count past the capacity is fatal."""
         if self.is_output_com_handle(field):
-            return (f'/* skip {prefix}{field.name} (guest-allocated id, '
-                    f'wrapper built on client thunk; not in reply) */')
+            if not canonical:
+                return (f'/* skip {prefix}{field.name} (guest-allocated id, '
+                        f'wrapper built on client thunk; not in reply) */')
+            if self._get_count_expr(field, prefix):
+                return '\n'.join([
+                    f'{{',
+                    f'    const uint64_t _n = '
+                    f'npt_decode_array_count_unchecked(dec);',
+                    f'    if (_n > _ref_cap - _ref_i) {{',
+                    f'        npt_cs_decoder_set_fatal(dec);',
+                    f'        return;',
+                    f'    }}',
+                    f'    for (uint64_t _i = 0; _i < _n; _i++)',
+                    f'        npt_decode_npt_wire_object_ref(dec, '
+                    f'&_refs[_ref_i++]);',
+                    f'}}',
+                ])
+            return '\n'.join([
+                f'if (_ref_i >= _ref_cap) {{',
+                f'    npt_cs_decoder_set_fatal(dec);',
+                f'    return;',
+                f'}}',
+                f'npt_decode_npt_wire_object_ref(dec, &_refs[_ref_i++]);',
+            ])
         if not field.output:
             return f'/* skip {prefix}{field.name} (input only) */'
         # Indirection-0 fixed array param: caller supplies the buffer; the
@@ -2104,7 +2184,8 @@ class Gen:
 
     def register_output_handle_field(self, field: NptField, prefix: str,
                                      indent: int = 1,
-                                     riid_expr: Optional[str] = None) -> str:
+                                     riid_expr: Optional[str] = None,
+                                     canonical: bool = False) -> str:
         """
         Generate handle registration code for an output COM handle field.
         Called on host side after the dispatched method returns so the
@@ -2127,7 +2208,7 @@ class Gen:
         if inner is not None:
             return '\n'.join(p for p in
                              (self.register_output_handle_field(
-                                 f, prefix, indent, riid_expr)
+                                 f, prefix, indent, riid_expr, canonical)
                               for f in inner) if p)
 
         acc = self._acc(field, prefix)
@@ -2142,6 +2223,14 @@ class Gen:
                 return ''
             if field.indirection != 2:
                 return ''
+            if canonical:
+                return (
+                    f'{ind}if ({acc})\n'
+                    f'{ind}    npt_cs_handle_register_canonical_guest_id(ctx, '
+                    f'{prefix}_guest_id_{field.name}, *{acc},\n'
+                    f'{ind}        npt_object_type_from_iid({riid_expr}), '
+                    f'&{prefix}_ref_{field.name});'
+                )
             return (
                 f'{ind}if ({acc} && *{acc})\n'
                 f'{ind}    npt_cs_handle_register_guest_id(ctx, '
@@ -2155,7 +2244,25 @@ class Gen:
         obj_type = self._object_type_for_field(field)
 
         # Output double-pointer: either Create* returning a single object
-        # (T **pp) or Create* returning an array (T ***pp + count).
+        # (T **pp) or Create* returning an array (T ***pp + count).  A
+        # canonical method answers each slot's registered id into the
+        # command's reply refs instead of recording a failed id.
+        if field.indirection == 2 and canonical:
+            count_expr = self._get_count_expr(field, prefix)
+            if count_expr:
+                return (f'{ind}if ({acc} && {prefix}_guest_ids_{field.name}) {{\n'
+                        f'{ind}    const uint32_t _n = '
+                        f'{prefix}_guest_id_count_{field.name};\n'
+                        f'{ind}    for (uint32_t _i = 0; _i < _n; _i++)\n'
+                        f'{ind}        npt_cs_handle_register_canonical_guest_id(ctx,\n'
+                        f'{ind}            {prefix}_guest_ids_{field.name}[_i], '
+                        f'{acc}[_i], {obj_type}, '
+                        f'&{prefix}_refs_{field.name}[_i]);\n'
+                        f'{ind}}}')
+            return (f'{ind}if ({acc})\n'
+                    f'{ind}    npt_cs_handle_register_canonical_guest_id(ctx, '
+                    f'{prefix}_guest_id_{field.name}, *{acc}, {obj_type}, '
+                    f'&{prefix}_ref_{field.name});')
         if field.indirection == 2:
             count_expr = self._get_count_expr(field, prefix)
             if count_expr:
@@ -2215,23 +2322,25 @@ class Gen:
                              f'ctx, {prefix}_guest_id_{f.name});')
         return '\n'.join(lines)
 
-    def _riid_expr_for(self, params, prefix: str) -> Optional[str]:
-        """Return a C expression that evaluates to a const GUID * if
-        the parameter list has an IID input field, else None.  Used to
-        drive runtime type resolution for riid-based Create /
-        QueryInterface methods."""
+    def riid_exprs_for(self, params, prefix: str) -> dict:
+        """Map each void ** output parameter's name to the C expression
+        (a const GUID *) of the REFIID input that names its interface:
+        the i-th IID input belongs to the i-th void ** output, which is
+        how every such method in the registry pairs them
+        (GetParent(riid, ppv), GetCurrentResourceAndCommandQueue(
+        riidResource, ppvResource, riidQueue, ppvQueue), ...)."""
+        riids = []
         for p in params:
-            if not p.input:
-                continue
-            if p.type_name != 'IID':
+            if not p.input or p.type_name != 'IID':
                 continue
             if p.indirection == 1:
-                # Already a pointer (REFIID / const IID *)
-                return f'{prefix}{p.name}'
-            if p.indirection == 0:
-                # Inline IID value -- take its address.
-                return f'&{prefix}{p.name}'
-        return None
+                riids.append(f'{prefix}{p.name}')
+            elif p.indirection == 0:
+                riids.append(f'&{prefix}{p.name}')
+        outs = [p for p in params
+                if self.is_output_com_handle(p)
+                and p.type_name in ('void', 'VOID')]
+        return {o.name: r for o, r in zip(outs, riids)}
 
     def _type_might_contain_handle(self, ntype, _visited=None):
         """Check recursively if a struct/union type contains any handle fields."""

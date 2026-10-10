@@ -101,6 +101,10 @@ ${code}
     # the guest decode path takes the reply-mismatch branch and
     # returns the documented default for the call's return type.
     _reply_unsupported = GEN.method_reply_is_unsupported(method)
+    # canonical (registry): the reply names the id each returned object
+    # is registered under; the command struct carries one
+    # npt_wire_object_ref per output slot for the host to fill.
+    _canonical = GEN.method_is_canonical(method)
 %>\
 /*
  * ${iface.name}::${method.name}
@@ -124,6 +128,11 @@ struct npt_command_${fname} {
      * that decodes the wire ids. */
     uint64_t *_guest_ids_${p.name};
     uint32_t _guest_id_count_${p.name};
+% endif
+% if _canonical and GEN.is_output_com_handle_single(p):
+    struct npt_wire_object_ref _ref_${p.name};
+% elif _canonical and GEN.is_output_com_handle_array(p):
+    struct npt_wire_object_ref *_refs_${p.name};
 % endif
 % endfor
 % if _has_ret:
@@ -212,7 +221,7 @@ void\
     cmd_size += ${GEN.reply_payload_size_expr(method.return_type)};
 % endif
 % for p in all_params:
-${GEN.sizeof_output_param(p, '', 'cmd_size')}
+${GEN.sizeof_output_param(p, '', 'cmd_size', canonical=_canonical)}
 % endfor
 % endif
     return cmd_size;
@@ -227,7 +236,7 @@ ${' ' * (len('npt_decode_') + len(fname) + len('_args_temp') + 1)}struct npt_com
     /* Decode input parameters from the wire */
 <% GEN.begin_decode() %>\
 % for p in method.params:
-${GEN.decode_input_param(p, 'args->')}
+${GEN.decode_input_param(p, 'args->', canonical=_canonical)}
 % endfor
 <% _count_checks = GEN.counted_array_checks() %>\
 % if _count_checks:
@@ -283,12 +292,12 @@ ${' ' * (len('npt_encode_') + len(fname) + len('_reply') + 1)}const struct npt_c
      * failure the host may have written the required count but left the
      * array contents unpopulated, so only encode elements on success. */
     if ((HRESULT)args->ret >= 0) {
-    ${GEN.encode_output_param(p, 'args->')}
+    ${GEN.encode_output_param(p, 'args->', canonical=_canonical)}
     } else {
         npt_encode_array_count(enc, 0);
     }
 % else:
-${GEN.encode_output_param(p, 'args->')}
+${GEN.encode_output_param(p, 'args->', canonical=_canonical)}
 % endif
 % endfor
 % endif
@@ -379,12 +388,12 @@ ${GEN.register_failed_output_handles(method.params, 'args.')}
     }
 
     /* Register any output COM handles in the context object table so
-     * later commands that reference them can be validated.  The riid
-     * expression (if any) lets the generator resolve void** outputs
-     * whose type is determined by the caller's riid. */
-<% _riid = GEN._riid_expr_for(method.params, 'args.') %>\
+     * later commands that reference them can be validated.  A void**
+     * output takes its type from the REFIID input paired with it.  A
+     * canonical method's slots are answered into the reply refs. */
+<% _riids = GEN.riid_exprs_for(method.params, 'args.') %>\
 % for p in method.params:
-<% _reg = GEN.register_output_handle_field(p, 'args.', riid_expr=_riid) %>\
+<% _reg = GEN.register_output_handle_field(p, 'args.', riid_expr=_riids.get(p.name), canonical=_canonical) %>\
 % if _reg.strip():
 ${_reg}
 % endif
@@ -415,8 +424,19 @@ ${' ' * (len('npt_decode_') + len(fname) + len('_reply') + 1)}${GEN.c_type(p)} $
 ,
 ${' ' * (len('npt_decode_') + len(fname) + len('_reply') + 1)}${method.return_type} *ret\
 % endif
+% if _canonical:
+,
+${' ' * (len('npt_decode_') + len(fname) + len('_reply') + 1)}struct npt_wire_object_ref *_refs,
+${' ' * (len('npt_decode_') + len(fname) + len('_reply') + 1)}size_t _ref_cap\
+% endif
 )
 {
+% if _canonical:
+    /* Registered ids of the returned objects, in parameter order: one
+     * per single output, the guest's capacity per array; `_ref_cap`
+     * bounds what the host may send. */
+    size_t _ref_i = 0;
+% endif
     struct npt_reply_header _reply;
     npt_cs_decoder_read(dec, sizeof(_reply), &_reply, sizeof(_reply));
     if (unlikely(_reply.cmd_type != NPT_CMD_TYPE(255, NPT_IFACE_ID_${iface.name},
@@ -447,7 +467,7 @@ ${' ' * (len('npt_decode_') + len(fname) + len('_reply') + 1)}${method.return_ty
     if (ret) npt_decode_${method.return_type}(dec, ret);
 % endif
 % for p in output_params:
-${GEN.decode_output_param(p, '')}
+${GEN.decode_output_param(p, '', canonical=_canonical)}
 % endfor
 }
 
@@ -512,6 +532,7 @@ ${p.name}${',' if i < len(all_params) - 1 else ''}\
     }
 }
 
+% if not _canonical:
 static inline void
 npt_async_${fname}(struct npt_ring *ring,
 ${' ' * (len('npt_async_') + len(fname) + 1)}npt_object_id object_id\
@@ -529,6 +550,7 @@ ${' ' * (len('npt_async_') + len(fname) + 1)}${GEN.c_type(p)} ${p.name}\
 , &submit);
 }
 
+% endif
 static inline ${call_ret}
 npt_call_${fname}(struct npt_ring *ring,
 ${' ' * (len('npt_call_') + len(fname) + 1)}npt_object_id object_id\
@@ -536,6 +558,11 @@ ${' ' * (len('npt_call_') + len(fname) + 1)}npt_object_id object_id\
 ,
 ${' ' * (len('npt_call_') + len(fname) + 1)}${GEN.c_type(p)} ${p.name}\
 % endfor
+% if _canonical:
+,
+${' ' * (len('npt_call_') + len(fname) + 1)}struct npt_wire_object_ref *_refs,
+${' ' * (len('npt_call_') + len(fname) + 1)}size_t _ref_cap\
+% endif
 )
 {
     struct npt_ring_submit_command submit;
@@ -545,12 +572,16 @@ ${' ' * (len('npt_call_') + len(fname) + 1)}${GEN.c_type(p)} ${p.name}\
 % endfor
 , &submit);
     struct npt_cs_decoder *dec = npt_ring_get_command_reply(ring, &submit);
-% if _has_ret:
-    if (dec) {
 <%
     reply_args = [p.name for p in output_params]
-    reply_args.append('&_ret')
+    if _has_ret:
+        reply_args.append('&_ret')
+    if _canonical:
+        reply_args.append('_refs')
+        reply_args.append('_ref_cap')
 %>\
+% if _has_ret:
+    if (dec) {
         ${method.return_type} _ret;
         npt_decode_${fname}_reply(dec, ${', '.join(reply_args)});
         npt_ring_free_command_reply(ring, &submit);
@@ -561,7 +592,7 @@ ${' ' * (len('npt_call_') + len(fname) + 1)}${GEN.c_type(p)} ${p.name}\
 % else:
     if (dec) {
 % if output_params:
-        npt_decode_${fname}_reply(dec, ${', '.join(p.name for p in output_params)});
+        npt_decode_${fname}_reply(dec, ${', '.join(reply_args)});
 % endif
         npt_ring_free_command_reply(ring, &submit);
     }
@@ -799,9 +830,9 @@ ${GEN.register_failed_output_handles(func.params, 'args.')}
     /* Register any output COM handles.  Top-level functions with a
      * riid + void** pair (CreateDXGIFactory1, D3D12CreateDevice, ...)
      * get runtime type resolution via npt_object_type_from_iid. */
-<% _riid = GEN._riid_expr_for(func.params, 'args.') %>\
+<% _riids = GEN.riid_exprs_for(func.params, 'args.') %>\
 % for p in func.params:
-<% _reg = GEN.register_output_handle_field(p, 'args.', riid_expr=_riid) %>\
+<% _reg = GEN.register_output_handle_field(p, 'args.', riid_expr=_riids.get(p.name)) %>\
 % if _reg.strip():
 ${_reg}
 % endif

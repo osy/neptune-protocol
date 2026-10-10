@@ -38,6 +38,25 @@ struct npt_reply_header {
 #define NPT_CMD_FLAG_REPLY  0x1u
 
 /*
+ * One returned COM object in the reply of a method whose registry entry
+ * carries canonical=true or "memo": the id the host registered the
+ * object under (an id the guest already holds when the host already
+ * knew the object), the id of the object's primary registration (the
+ * one QueryInterface(IID_IUnknown) answers with) and the object type the
+ * host records for `id`.  id == 0 means the slot holds NULL.
+ */
+struct npt_wire_object_ref {
+    uint64_t id;
+    uint64_t primary_id;
+    uint32_t type;
+    uint32_t pad;
+};
+
+/* Reply refs a client thunk keeps on its stack (a method's single
+ * outputs plus its arrays' capacity) before it falls back to the heap. */
+#define NPT_CLIENT_REF_STACK_SLOTS 32
+
+/*
  * cmd_type bit layout for COM calls:
  *   bits 31:24  group (255 = COM)
  *   bits 23:8   interface_id (pinned from npt_interface_ids.json; 65535 max)
