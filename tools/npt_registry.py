@@ -215,6 +215,22 @@ class NptMethod:
     # are never staged whatever this says.
     staged: Optional[bool] = None
 
+    # How the guest learns the id of each object a method returns through
+    # an output COM handle (T **).  Resolved by
+    # TypeRegistry._validate_canonical from the overlay's exception, else
+    # canonical_default:
+    #   False  -- the guest mints the id and keeps it; the call carries
+    #             no reply for it (the object is new).
+    #   True   -- the call replies with the id the host registered each
+    #             object under, which is an existing id when the host
+    #             already knows the object.
+    #   'memo' -- as True, and the guest memoizes the answer on the
+    #             wrapper: the getter's answer is fixed for the object's
+    #             lifetime, it has one output handle and no other output,
+    #             and its inputs are at most a REFIID.
+    # None on a method that returns no COM object.
+    canonical: Optional[Any] = None
+
 
 @dataclass
 class NptType:
@@ -256,6 +272,9 @@ class NptType:
     group: Optional[int] = None
     id: Optional[int] = None
     params: list[NptField] = dataclass_field(default_factory=list)
+    # NptMethod.canonical for a top-level function: always False (it
+    # creates a root object) when it returns a COM object, else None.
+    canonical: Optional[Any] = None
 
     # For consts
     value: Optional[int] = None
@@ -498,7 +517,16 @@ def _parse_method(raw, index):
         skip_default=bool(raw.get('skip_default', False)),
         force_sync=bool(raw.get('force_sync', False)),
         staged=(bool(raw['staged']) if 'staged' in raw else None),
+        canonical=raw.get('canonical'),
     )
+
+
+def canonical_default(method_name):
+    """NptMethod.canonical for a method that returns a COM object and has
+    no annotation: false for Create*/Open* (new objects by the COM naming
+    convention), true otherwise (correct for new and existing objects).
+    tools/npt_testgen.py repeats this rule; keep the two in step."""
+    return not method_name.startswith(('Create', 'Open'))
 
 
 # ---------------------------------------------------------------------------
@@ -714,6 +742,7 @@ class TypeRegistry:
                 ntype.return_type = raw.get('return')
                 ntype.group = raw.get('group')
                 ntype.id = raw.get('id')
+                ntype.canonical = raw.get('canonical')
                 for i, p in enumerate(raw.get('params', [])):
                     ntype.params.append(_parse_field(p, parent_name=name, index=i))
 
@@ -816,6 +845,7 @@ class TypeRegistry:
 
         # Validate field constraints before code generation
         self._validate_fields()
+        self._validate_canonical()
 
         # Resolve size field dereference counts
         self._resolve_size_derefs()
@@ -880,6 +910,93 @@ class TypeRegistry:
                 mctx = f'{ctx}.{method.name}'
                 for param in method.params:
                     check_field(param, mctx)
+
+    def _validate_canonical(self):
+        """Resolve NptMethod.canonical for every method that returns a COM
+        object (an output COM handle, T **) and check the annotations.
+
+        The overlay names only exceptions; everything else takes the
+        default (canonical_default):
+          - a method whose name starts with Create or Open returns a new
+            object (the COM naming convention) and defaults to false;
+          - any other method defaults to true, which is correct for a new
+            object and for one the guest already holds, so a method added
+            later without thought costs at most a round trip, never a
+            duplicate wrapper.
+        An annotation may also state the default explicitly.  Top-level
+        functions create the root objects (factory, device) and are always
+        false; they take no annotation.  After this pass canonical is
+        False, True or 'memo' on every method with an output COM handle
+        and None elsewhere."""
+        def is_output_com_handle(p):
+            return (p.is_com_handle and p.indirection == 2
+                    and p.output and not p.input)
+
+        for func in self.functions:
+            if func.canonical is not None:
+                raise ValueError(
+                    f"canonical on top-level function {func.name}: a "
+                    f"top-level function creates a root object and is "
+                    f"never canonical; drop the annotation")
+            if any(is_output_com_handle(p) for p in func.params):
+                func.canonical = False
+
+        for iface in self.types.values():
+            if iface.category != Category.INTERFACE:
+                continue
+            for method in iface.methods:
+                context = f'{iface.name}::{method.name}'
+                params = method.params
+                outs = [p for p in params if is_output_com_handle(p)]
+                explicit = method.canonical
+                if not outs:
+                    if explicit is not None:
+                        raise ValueError(
+                            f"canonical on {context}, which returns no COM "
+                            f"object; the annotation applies only to "
+                            f"methods with an output COM handle")
+                    continue
+                default = canonical_default(method.name)
+                if explicit is None:
+                    method.canonical = default
+                elif explicit not in (True, False, 'memo'):
+                    raise ValueError(
+                        f"canonical={explicit!r} on {context}: expected "
+                        f"false, true or \"memo\"")
+                canonical = method.canonical
+                if canonical is False:
+                    continue
+                # A canonical reply carries one ref per output slot; a
+                # void ** output takes its interface from the REFIID input
+                # paired with it by position.
+                voids = [p for p in outs if p.type_name in ('void', 'VOID')]
+                riids = [p for p in params
+                         if p.input and p.type_name == 'IID']
+                if len(riids) < len(voids):
+                    raise ValueError(
+                        f"canonical {context}: a void ** output has no "
+                        f"REFIID input to name its interface")
+                if canonical != 'memo':
+                    continue
+                if method.return_type not in (None, 'void', 'HRESULT'):
+                    raise ValueError(
+                        f"canonical=\"memo\" on {context}: a memoized "
+                        f"getter returns void or an HRESULT, since a memo "
+                        f"hit answers S_OK")
+                if len(outs) != 1 or outs[0].count is not None:
+                    raise ValueError(
+                        f"canonical=\"memo\" on {context}: a memoized "
+                        f"getter returns exactly one object, not an array")
+                if any(p.output and not is_output_com_handle(p)
+                       for p in params):
+                    raise ValueError(
+                        f"canonical=\"memo\" on {context}: a memoized "
+                        f"getter has no output besides the object")
+                if any(p.input and p.type_name != 'IID' for p in params):
+                    raise ValueError(
+                        f"canonical=\"memo\" on {context}: a memoized "
+                        f"getter takes no input but a REFIID, since the "
+                        f"memo is keyed by (method, IID) alone")
 
     def _resolve_size_derefs(self):
         """For fields with string size references, compute how many

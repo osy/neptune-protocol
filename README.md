@@ -128,6 +128,14 @@ a fork of the SDK headers, for example:
   dropped from the wire),
 - per-method tweaks such as `skip_default: true` to opt a method out of
   the generator's default thunk in favour of a hand-written one,
+- `canonical` on a method that returns a COM object, only where it differs
+  from the default for its name: a `Create*`/`Open*` method defaults to
+  `false` (a new object: the guest mints its id, no reply), any other to
+  `true` (the reply names the id the host registered the object under,
+  an existing id for an object the host already knows; correct either
+  way, so a method added without thought is never wrong, only one round
+  trip slower). `"memo"` additionally memoizes a lifetime-fixed getter's
+  answer on the wrapper.
 - per-parameter fixes (handle classification, input/output direction,
   array counts),
 - `manual_codec: true` on a struct whose wire form no field annotation

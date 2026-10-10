@@ -178,6 +178,13 @@
         "staged": {
           "type": "boolean",
           "description": "When true, the guest may hold the command in the calling thread's staging buffer and publish it to the ring in a burst, because its effects become observable to other threads only through a later ordering point. Absent inherits the interface's staged_methods. Sync methods and output-handle Creates are never staged."
+        },
+        "canonical": {
+          "oneOf": [
+            { "type": "boolean" },
+            { "const": "memo" }
+          ],
+          "description": "How the guest learns the id of each object this method returns through an output COM handle (T **). Allowed only on methods with such a handle. ABSENT = the default for the method's name: false when the name starts with Create or Open (by the COM naming convention those return a new object), true otherwise. An annotation may also state the default explicitly. false: the object is new; the guest mints its id and the call takes no reply for it (Create-then-Use stays asynchronous). true: the call takes a sync reply naming the id the host registered each returned object under, which is the id the guest already holds when the host already knows the object; correct for new and existing objects alike, so it is the fail-safe default for any method not named Create/Open. \"memo\": as true, and the guest also memoizes the answer on the wrapper for the object's lifetime; only for getters whose answer is fixed for the object's lifetime, returning one object (not an array) and no other output, with no input but a REFIID. Top-level functions create the root objects and are never canonical; they take no annotation."
         }
       },
       "additionalProperties": false

@@ -361,7 +361,8 @@
         {"name": "CreateBuffer",    "skip_default": true},
         {"name": "CreateTexture1D", "skip_default": true},
         {"name": "CreateTexture2D", "skip_default": true},
-        {"name": "CreateTexture3D", "skip_default": true}
+        {"name": "CreateTexture3D", "skip_default": true},
+        {"name": "GetImmediateContext", "canonical": "memo"}
       ]
     },
     {
@@ -1109,6 +1110,96 @@
             ]
           }
         }
+      ]
+    },
+    {
+      "name": "IDXGIObject",
+      "methods": [
+        {"name": "GetParent", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "IDXGIDeviceSubObject",
+      "methods": [
+        {"name": "GetDevice", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "IDXGIDevice",
+      "methods": [
+        {"name": "GetAdapter", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "ID3D11DeviceChild",
+      "methods": [
+        {"name": "GetDevice", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "ID3D11View",
+      "methods": [
+        {"name": "GetResource", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "ID3D11ClassInstance",
+      "methods": [
+        {"name": "GetClassLinkage", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "ID3D11Device1",
+      "methods": [
+        {"name": "GetImmediateContext1", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "ID3D11Device2",
+      "methods": [
+        {"name": "GetImmediateContext2", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "ID3D11Device3",
+      "methods": [
+        {"name": "GetImmediateContext3", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "ID3D11On12Device1",
+      "methods": [
+        {"name": "GetD3D12Device", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "ID3D12DeviceChild",
+      "methods": [
+        {"name": "GetDevice", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "ID3D12ProtectedSession",
+      "methods": [
+        {"name": "GetStatusFence", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "ID3D12Resource1",
+      "methods": [
+        {"name": "GetProtectedResourceSession", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "ID3D12Heap1",
+      "methods": [
+        {"name": "GetProtectedResourceSession", "canonical": "memo"}
+      ]
+    },
+    {
+      "name": "ID3D12SwapChainAssistant",
+      "methods": [
+        {"name": "GetSwapChainObject", "canonical": "memo"}
       ]
     }
   ]
