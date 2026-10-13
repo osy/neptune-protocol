@@ -1682,6 +1682,54 @@ static int test_manual_bounds_output_handles(void)
     return result;
 }
 
+/* Append a reply-less Draw whose header claims `tail` bytes more than
+ * its parameters take. */
+static size_t put_draw(uint8_t *buf, size_t tail)
+{
+    struct npt_command_header hdr;
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.cmd_type = NPT_CMD_TYPE(255, NPT_IFACE_ID_ID3D11DeviceContext,
+                                NPT_METHOD_ID3D11DeviceContext_Draw);
+    hdr.object_id = 1;
+    hdr.cmd_size = (uint32_t)(sizeof(hdr) + 2 * sizeof(UINT) + tail);
+    memcpy(buf, &hdr, sizeof(hdr));
+    memset(buf + sizeof(hdr), 0, 2 * sizeof(UINT));
+    memset(buf + sizeof(hdr) + 2 * sizeof(UINT), 0xEE, tail);
+    return hdr.cmd_size;
+}
+
+/* The next command starts at cmd_size, not where decoding stopped, and a
+ * cmd_size past the stream is refused. */
+static int test_manual_dispatch_cmd_size(void)
+{
+    uint8_t buf[256];
+    size_t n = put_draw(buf, 16);
+    n += put_draw(buf + n, 0);
+
+    struct npt_cs_decoder dec = npt_test_decoder_init(buf, n);
+    struct npt_dispatch_context ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.decoder = &dec;
+    npt_dispatch_command(&ctx);
+    npt_dispatch_command(&ctx);
+    int result = expect_fatal("dispatch with a padded command", &dec, false);
+    if (dec.cur != buf + n || dec.end != buf + n) {
+        fprintf(stderr, "FAIL: dispatch stopped at %td of %zu\n",
+                dec.cur - buf, n);
+        result = -1;
+    }
+    npt_test_cleanup(&dec);
+
+    struct npt_command_header *hdr = (struct npt_command_header *)buf;
+    hdr->cmd_size = (uint32_t)(n + 1);
+    dec = npt_test_decoder_init(buf, n);
+    ctx.decoder = &dec;
+    npt_dispatch_command(&ctx);
+    result |= expect_fatal("dispatch with cmd_size past the stream", &dec, true);
+    npt_test_cleanup(&dec);
+    return result;
+}
+
 static const struct manual_test_entry manual_tests[] = {
     { "D3D12_PIPELINE_STATE_STREAM_DESC (mesh pipeline records)",
       test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_mesh },
@@ -1735,6 +1783,7 @@ static const struct manual_test_entry manual_tests[] = {
     { "bounds: blob param", test_manual_bounds_blob_param },
     { "bounds: struct counted field", test_manual_bounds_struct_field },
     { "bounds: output COM handle array", test_manual_bounds_output_handles },
+    { "dispatch honours cmd_size", test_manual_dispatch_cmd_size },
     { "dispatch ID3D12Resource::Map",
       test_manual_dispatch_Map },
     { "dispatch ID3D12VersionedRootSignatureDeserializer::GetRootSignatureDescAtVersion",

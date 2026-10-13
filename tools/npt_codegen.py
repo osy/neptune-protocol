@@ -426,8 +426,8 @@ class Gen:
         if self.is_output_com_handle(field):
             count_expr = self._get_count_expr(field, prefix)
             if count_expr:
-                return (f'{dst} += sizeof(uint64_t) + (size_t)({count_expr}) '
-                        f'* sizeof(uint64_t);'
+                return (f'{dst} += sizeof(uint64_t) + ({prefix}{field.name} ? '
+                        f'(size_t)({count_expr}) : 0) * sizeof(uint64_t);'
                         f'  /* {field.name}: array_count + N guest ids */')
             return f'{dst} += sizeof(uint64_t);  /* {field.name}: guest id */'
         if not field.input:
