@@ -32,6 +32,10 @@ Only overlays with the same version as the base JSON are parsed. Otherwise an
 error is returned. For the remaining document, JSON shall refer to the combined
 JSON with all overlays applied.
 
+The version is also the wire version (`NPT_PROTOCOL_WIRE_VERSION`), which the
+two ends compare before they talk.  Any change to the bytes either end sends
+or expects, including commands appearing or disappearing, bumps it.
+
 ## Byte Ordering
 
 All integers are sent in little-endian in the wire interface.
@@ -47,8 +51,10 @@ passed.
 | Top Level | 1-3 | CreateDevice, etc | Marshaled |
 | COM Call  | 255 | CreateBuffer, etc | Marshaled |
 
-In this document, we will ignore transport group commands. They will be defined
-and handled by the transport layer.
+Transport commands are cast-directly C structs behind the same command
+header.  They are not generated; `transport/npt_protocol_transport.h`
+defines them and ships verbatim beside the generated headers, so both ends
+compile one copy.  The rest of this document covers groups 1-3 and 255.
 
 Top level commands call functions exported directly by the DLLs. Each top level
 function has a user assigned ID which is defined in the overlay JSON. Top level
@@ -79,6 +85,15 @@ struct npt_command_header {
 };
 // Total: 24 bytes
 ```
+
+`cmd_size` is authoritative.  The receiver decodes a command inside its
+`cmd_size` bytes and starts the next one at `cmd_size`, whatever the decode
+consumed.  A `cmd_size` smaller than the header or past the end of the
+stream is fatal.
+
+`NPT_CMD_FLAG_REPLY` asks for a reply.  A command without it that names an
+object the receiver does not know (`object_id`, or a handle argument) is
+dropped; with it, the stream goes fatal, since no honest reply exists.
 
 ### cmd_type encoding
 
@@ -168,17 +183,30 @@ serialized as a `uint64_t`.
 
 ### COM Handles
 
-When a command parameter is an object handle, dispatchable or not, a
-`uint64_t` is serialized indicating the object id.  A `NULL` object handle
-has object id 0.
+When a command parameter is an input object handle, a `uint64_t` object id
+is serialized.  A `NULL` object handle has object id 0.  An input array of
+handles is a pointer of ids (count, then the ids).
 
-The handle's declared interface type is implicit in the cmd_type's
-interface_id; it is NOT carried inside the body.  For methods that accept
-a polymorphic handle (e.g. `riid`-tagged output parameters), the interface
-is identified either by a companion GUID parameter in the method signature
-(following normal struct-encoding rules) or by a pinned interface_id
-encoded as a `uint16_t` — consult the per-method generated code for the
-exact shape.
+An output object handle (`T **`) is NOT returned by the reply.  The sender
+mints a new id for every output slot and puts it in the command, in the
+parameter's position: one `uint64_t` for a single output (0 when the out
+pointer is NULL, which the receiver passes on as NULL), or a count and
+that many ids for an array (count 0 when the array is NULL).  The receiver
+registers each returned object under the id the sender minted, so the
+object can be used by the very next command without a round trip.  A slot
+the call left NULL, or a command that was dropped, records the id as a
+failed object, and a later use of it fails instead of waiting.
+
+A method whose registry entry is canonical (`true` or `"memo"`, the
+default for every method not named Create*/Open*) can return an object the
+receiver already knows.  Its reply carries one `struct npt_wire_object_ref`
+per output slot, in parameter order: the id the object is registered under
+(possibly an existing one rather than the minted one), the id of the
+object's primary registration and its object type, `id` 0 for NULL.  An
+array carries a count first.
+
+The interface of a `void **` output is named by the REFIID input paired
+with it by position.
 
 ### Pointers
 
@@ -187,6 +215,9 @@ is serialized first, indicating the number of elements that follow.  The
 values pointed to by the pointer are then serialized.  Padding to 32-bit, if
 needed, happens after all values are serialized, not after each individual
 value.
+
+A pointer with no count (a single value) carries count 1 when present and
+0 when `NULL`.
 
 A `void` pointer pointing to a blob with a known byte count is said to be a
 blob pointer.  It is serialized as a `uint8_t` pointer — the element count
@@ -197,27 +228,49 @@ characters up to, and including, the first null character.
 
 A `wchar_t` pointer is serialized as a blob pointer with the same rules.
 
-A pointer serialization with zero count must be deserialized to `NULL`.
+On input, a counted pointer's count 0 means `NULL`, and
+`UINT64_MAX` (`NPT_COUNTED_POINTER_PRESENT_ZERO`) means a non-`NULL`
+pointer with no elements, which the receiver rebuilds as a present empty
+array.  Blobs, strings and handle arrays have no present-empty form: count
+0 is `NULL`.  On output, the count is the plain element count.
+
+The receiver checks every present counted array against the count the
+callee will walk (the registry's count expression over the other
+parameters or fields): an input array must hold at least that many
+elements and an output array exactly that many.  A shorter array is fatal.
 
 ### Fixed-Size Arrays
 
 When a command parameter is a fixed-size array, it is serialized as a pointer.
-The element count serialized must be less than or equal to the fixed size.
+The element count serialized must equal the fixed size; an optional array
+parameter may instead be `NULL` (count 0).
 
 ### Structs
 
 When a command parameter is a struct, the data members of the struct are
 serialized in order, using the same rules that are applied on command
-parameters.
+parameters.  A bitfield member is serialized as its own `uint32_t`.
 
 ### Unions
 
-Unions are serialized the same as structs which may lead to duplicated data.
+A union whose arms the overlay gates with conditions on a discriminator
+(`D3D11_SHADER_RESOURCE_VIEW_DESC` on `ViewDimension`, `D3D12_RESOURCE_BARRIER`
+on `Type`, ...) serializes only the arm whose condition holds.  A union
+without conditions (`D3D11_VIDEO_COLOR`, `D3D12_SAMPLER_DESC2`'s border
+color) serializes every arm in order.  A union the overlay lays over one
+vendor-declared member (`storage_member`, e.g. `D3D12_STATE_SUBOBJECT`'s
+`pDesc`) is reached through that member's storage, the arm chosen as above.
 
 ### External Handles
 
 When a command parameter is an external handle, it is serialized the same as a
 COM handle (as an object handle).
+
+An event `HANDLE` (`"handle": "event"` in the overlay) travels the same way,
+but the value must be a token the sender registered with the receiver's
+event bridge; an unknown token reaches the callee as `NULL`.  The generator
+therefore requires every method with such a parameter to have a
+hand-written client thunk (`skip_default`) that arms one.
 
 ### Hand-written codecs
 
@@ -229,9 +282,15 @@ handle-replace pass) and ships the header beside its output.
 
 `D3D12_PIPELINE_STATE_STREAM_DESC`: a `uint64_t` record count, then each
 record's subobject type (an enum) and its payload under the payload type's
-own rules.  Neither `SizeInBytes` nor the packed record layout is sent; the
+own rules (the root signature as an object id).  Neither `SizeInBytes` nor the packed record layout is sent; the
 decoder rebuilds the stream in its own ABI.  A stream with an unknown record
 type, or a record that does not fit `SizeInBytes`, is not serializable.
+
+### Methods without a command
+
+A method the overlay marks `unsupported`, and every method returning a
+pointer, has no command: no cmd_type is routed for it and its client thunk
+fails the call locally.
 
 ### Others
 
