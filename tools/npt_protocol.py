@@ -421,11 +421,13 @@ def generate_dispatch(registry, gen, outdir, includes):
 
 
 def _get_git_commit():
-    """Get the current git commit hash, or 'unknown' if not in a git repo."""
+    """The neptune-protocol commit the output comes from, '-dirty' when the
+    tree has local changes, or 'unknown' outside a git checkout.  Asked of
+    the source tree, since the generator runs in the build directory."""
     try:
         result = subprocess.run(
-            ['git', 'rev-parse', 'HEAD'],
-            capture_output=True, text=True, timeout=5)
+            ['git', 'describe', '--always', '--dirty', '--abbrev=40'],
+            capture_output=True, text=True, timeout=5, cwd=NPT_DIR)
         if result.returncode == 0:
             return result.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired):
