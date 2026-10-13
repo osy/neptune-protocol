@@ -154,6 +154,7 @@ struct npt_cs_decoder {
    const uint8_t *cur;
    const uint8_t *end;
    struct npt_cs_temp_alloc *temp_head;
+   bool fatal;
 };
 
 static inline void
@@ -190,14 +191,13 @@ npt_cs_decoder_peek(const struct npt_cs_decoder *dec,
 static inline void
 npt_cs_decoder_set_fatal(const struct npt_cs_decoder *dec)
 {
-   (void)dec;
+   ((struct npt_cs_decoder *)dec)->fatal = true;
 }
 
 static inline bool
 npt_cs_decoder_get_fatal(const struct npt_cs_decoder *dec)
 {
-   (void)dec;
-   return false;
+   return dec->fatal;
 }
 
 static inline bool

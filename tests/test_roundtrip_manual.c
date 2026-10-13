@@ -1563,6 +1563,125 @@ static int test_manual_counted_pointer_present_zero(void)
     return result;
 }
 
+/* ------------------------------------------------------------------ */
+/* Decode-time bounds checks against the callee's count               */
+/* ------------------------------------------------------------------ */
+
+static int expect_fatal(const char *name, const struct npt_cs_decoder *dec,
+                        bool want)
+{
+    if (dec->fatal == want)
+        return 0;
+    fprintf(stderr, "FAIL: %s: decode %s fatal\n", name,
+            want ? "did not go" : "went");
+    return -1;
+}
+
+/* A present-zero viewport array must not pass for NumViewports=4. */
+static int test_manual_bounds_present_zero(void)
+{
+    uint8_t buf[64];
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    UINT num = 4;
+    npt_encode_UINT(&enc, &num);
+    npt_encode_array_count(&enc, NPT_COUNTED_POINTER_PRESENT_ZERO);
+    struct npt_cs_decoder dec =
+        npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+    struct npt_command_ID3D11DeviceContext_RSSetViewports args = {0};
+    npt_decode_ID3D11DeviceContext_RSSetViewports_args_temp(&dec, &args);
+    int result = expect_fatal("RSSetViewports present-zero", &dec, true);
+    npt_test_cleanup(&dec);
+    return result;
+}
+
+/* A 4-byte bytecode blob must not pass for BytecodeLength=100. */
+static int test_manual_bounds_blob_param(void)
+{
+    uint8_t buf[64];
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    const uint8_t code[4] = { 1, 2, 3, 4 };
+    npt_encode_array_count(&enc, sizeof(code));
+    npt_encode_blob_array(&enc, code, sizeof(code));
+    SIZE_T len = 100;
+    npt_encode_SIZE_T(&enc, &len);
+    npt_encode_com_handle(&enc, 0);
+    uint64_t gid = 7;
+    npt_encode_uint64_t(&enc, &gid);
+    struct npt_cs_decoder dec =
+        npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+    struct npt_command_ID3D11Device_CreatePixelShader args = {0};
+    npt_decode_ID3D11Device_CreatePixelShader_args_temp(&dec, &args);
+    int result = expect_fatal("CreatePixelShader short blob", &dec, true);
+    npt_test_cleanup(&dec);
+    return result;
+}
+
+/* A struct's counted array is checked against the struct's own count. */
+static int test_manual_bounds_struct_field(void)
+{
+    uint8_t buf[256];
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    D3D12_INPUT_ELEMENT_DESC elem;
+    memset(&elem, 0, sizeof(elem));
+    elem.SemanticName = (const CHAR *)"POSITION";
+    npt_encode_array_count(&enc, 1);
+    npt_encode_D3D12_INPUT_ELEMENT_DESC(&enc, &elem);
+    UINT num = 8;
+    npt_encode_UINT(&enc, &num);
+    struct npt_cs_decoder dec =
+        npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+    D3D12_INPUT_LAYOUT_DESC desc;
+    memset(&desc, 0, sizeof(desc));
+    npt_decode_D3D12_INPUT_LAYOUT_DESC(&dec, &desc);
+    int result = expect_fatal("D3D12_INPUT_LAYOUT_DESC short array", &dec, true);
+    npt_test_cleanup(&dec);
+
+    /* A required array left out cannot stand for a non-zero count. */
+    enc = npt_test_encoder_init(buf, sizeof(buf));
+    npt_encode_array_count(&enc, 0);
+    npt_encode_UINT(&enc, &num);
+    dec = npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+    memset(&desc, 0, sizeof(desc));
+    npt_decode_D3D12_INPUT_LAYOUT_DESC(&dec, &desc);
+    result |= expect_fatal("D3D12_INPUT_LAYOUT_DESC NULL array", &dec, true);
+    npt_test_cleanup(&dec);
+    return result;
+}
+
+/* An absent output COM-handle array reaches the callee as NULL, and a
+ * present one must have exactly the callee's count of slots. */
+static int test_manual_bounds_output_handles(void)
+{
+    int result = 0;
+    for (int present = 0; present < 2; present++) {
+        uint8_t buf[64];
+        struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+        UINT num = present ? 8 : 1;
+        npt_encode_UINT(&enc, &num);
+        npt_encode_array_count(&enc, present ? 1 : 0);
+        uint64_t gid = 9;
+        if (present)
+            npt_encode_uint64_t(&enc, &gid);
+        npt_encode_uint64_t(&enc, &gid);
+        struct npt_cs_decoder dec =
+            npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+        struct npt_command_ID3D11DeviceContext_OMGetRenderTargets args = {0};
+        npt_decode_ID3D11DeviceContext_OMGetRenderTargets_args_temp(&dec, &args);
+        if (present) {
+            result |= expect_fatal("OMGetRenderTargets short array", &dec, true);
+        } else {
+            result |= expect_fatal("OMGetRenderTargets NULL array", &dec, false);
+            if (args.ppRenderTargetViews) {
+                fprintf(stderr, "FAIL: OMGetRenderTargets NULL array decoded "
+                        "non-NULL\n");
+                result = -1;
+            }
+        }
+        npt_test_cleanup(&dec);
+    }
+    return result;
+}
+
 static const struct manual_test_entry manual_tests[] = {
     { "D3D12_PIPELINE_STATE_STREAM_DESC (mesh pipeline records)",
       test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_mesh },
@@ -1612,6 +1731,10 @@ static const struct manual_test_entry manual_tests[] = {
       test_manual_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA },
     { "dispatch ID3D11DeviceContext::OMGetBlendState",
       test_manual_dispatch_OMGetBlendState },
+    { "bounds: present-zero param array", test_manual_bounds_present_zero },
+    { "bounds: blob param", test_manual_bounds_blob_param },
+    { "bounds: struct counted field", test_manual_bounds_struct_field },
+    { "bounds: output COM handle array", test_manual_bounds_output_handles },
     { "dispatch ID3D12Resource::Map",
       test_manual_dispatch_Map },
     { "dispatch ID3D12VersionedRootSignatureDeserializer::GetRootSignatureDescAtVersion",

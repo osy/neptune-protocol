@@ -233,12 +233,18 @@ static inline void
 npt_decode_${fname}_args_temp(struct npt_cs_decoder *dec,
 ${' ' * (len('npt_decode_') + len(fname) + len('_args_temp') + 1)}struct npt_command_${fname} *args)
 {
+<%
+    GEN.begin_decode()
+    _decode_body = '\n'.join(GEN.decode_input_param(p, 'args->', canonical=_canonical)
+                             for p in method.params)
+    _count_decls = GEN.counted_array_decls()
+    _count_checks = GEN.counted_array_checks()
+%>\
+% if _count_decls:
+${_count_decls}
+% endif
     /* Decode input parameters from the wire */
-<% GEN.begin_decode() %>\
-% for p in method.params:
-${GEN.decode_input_param(p, 'args->', canonical=_canonical)}
-% endfor
-<% _count_checks = GEN.counted_array_checks() %>\
+${_decode_body}
 % if _count_checks:
 ${_count_checks}
 % endif
@@ -719,12 +725,18 @@ static inline void
 npt_decode_${fname}_args_temp(struct npt_cs_decoder *dec,
 ${' ' * (len('npt_decode_') + len(fname) + len('_args_temp') + 1)}struct npt_command_${fname} *args)
 {
+<%
+    GEN.begin_decode()
+    _decode_body = '\n'.join(GEN.decode_input_param(p, 'args->')
+                             for p in func.params)
+    _count_decls = GEN.counted_array_decls()
+    _count_checks = GEN.counted_array_checks()
+%>\
+% if _count_decls:
+${_count_decls}
+% endif
     /* Decode input parameters from the wire */
-<% GEN.begin_decode() %>\
-% for p in func.params:
-${GEN.decode_input_param(p, 'args->')}
-% endfor
-<% _count_checks = GEN.counted_array_checks() %>\
+${_decode_body}
 % if _count_checks:
 ${_count_checks}
 % endif

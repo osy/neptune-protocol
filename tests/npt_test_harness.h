@@ -108,6 +108,7 @@ npt_test_decoder_init(const uint8_t *buf, size_t size)
     dec.cur = buf;
     dec.end = buf + size;
     dec.temp_head = NULL;
+    dec.fatal = false;
     return dec;
 }
 

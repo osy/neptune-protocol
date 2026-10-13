@@ -1506,7 +1506,13 @@ def _gen_host_verify_command(out, reg, iface, method, fname, is_toplevel, idx):
     out.write(f'    struct npt_cs_decoder dec = npt_test_decoder_init(buf + hdr_size, size - hdr_size);\n')
     out.write(f'    struct npt_command_{fname} args;\n')
     out.write(f'    memset(&args, 0, sizeof(args));\n')
-    out.write(f'    npt_decode_{fname}_args_temp(&dec, &args);\n\n')
+    out.write(f'    npt_decode_{fname}_args_temp(&dec, &args);\n')
+    # A well-formed command must pass every decode-time check.
+    out.write(f'    if (dec.fatal) {{\n')
+    out.write(f'        fprintf(stderr, "FAIL: CMD_{fname}: decode went fatal (style %d)\\n", style);\n')
+    out.write(f'        npt_test_cleanup(&dec);\n')
+    out.write(f'        return -1;\n')
+    out.write(f'    }}\n\n')
 
     # Re-encode
     out.write(f'    /* Re-encode from decoded args */\n')
@@ -2583,6 +2589,14 @@ def _gen_method_param_init_guest(out, reg, params, fields_map, prefix):
     # Second pass: other fields
     for p in params:
         if p.name is None:
+            continue
+        if (_is_output_com_handle(p) and p.count is not None
+                and not p.optional):
+            # A required output array must be there for the callee to
+            # fill; the host refuses a command that leaves it out.
+            cnt = get_count_expr(p, prefix, fields_map)
+            out.write(f'    if ({cnt} > 0)\n')
+            out.write(f'        {prefix}{p.name} = npt_test_alloc(sizeof(void *) * {cnt});\n')
             continue
         if not p.input:
             continue

@@ -76,41 +76,81 @@ class Gen:
     # ------------------------------------------------------------------
 
     def begin_decode(self):
-        """Start a command's input-decode block."""
+        """Start a decode function: a command's input parameters or a
+        struct's fields."""
         self._counted_arrays = []
         return ''
 
     def _count_var(self, field):
-        """Wire-count variable for a counted input array, registered for the
-        bounds check emitted once every parameter has been decoded."""
+        """Wire-count variable for a counted array, registered for the
+        bounds check emitted once every field has been decoded."""
         return f'_cnt_{field.name}'
 
-    def _register_counted_array(self, field, count_expr):
-        self._counted_arrays.append((self._count_var(field), count_expr))
+    @staticmethod
+    def _has_var(var):
+        return f'_has{var}'
 
-    def counted_array_checks(self, indent: int = 1) -> str:
-        """Bounds-check every counted input array against the expression the
+    def _register_counted_array(self, field, count_expr, exact=False):
+        """Record a counted array for counted_array_checks and return its
+        wire-count variable.  The decode sets the variable and, when the
+        pointer arrived present, its `_has` flag.  `exact`: the array is
+        the callee's output buffer, which it fills to the expression's
+        length, so the guest must have sized it to exactly that."""
+        var = self._count_var(field)
+        self._counted_arrays.append((var, count_expr, exact, field.optional))
+        return var
+
+    def counted_array_decls(self, indent: int = 1) -> str:
+        """Declare the variables of every counted array registered so far:
+        the wire count, and whether the array arrived (1), arrived absent
+        (0) or was never decoded because its union arm is inactive (-1).
+        Emitted before the decode body, since a field may decode inside a
+        union arm's condition."""
+        ind = '    ' * indent
+        return '\n'.join(f'{ind}uint64_t {var} = 0; int {self._has_var(var)} = -1;'
+                         for var, _, _, _ in self._counted_arrays)
+
+    def counted_array_checks(self, indent: int = 1,
+                             in_struct: bool = False) -> str:
+        """Bounds-check every counted array against the expression the
         callee will walk.
 
-        The element count travels on the wire, but the callee reads as many
-        elements as the count expression evaluates to, and that expression is
-        built from other parameters -- which the sender controls
-        independently.  A short array would be read past its end.  The check
-        runs here rather than at the array itself because the expression may
-        name parameters that decode later.  A zero count is the encoder's
-        NULL, which the callee is expected to handle."""
+        The element count travels on the wire, but the callee walks as many
+        elements as the count expression evaluates to, and that expression
+        is built from other fields that the sender controls independently.
+        A short array would be read, or as an output written, past its
+        end.  The check runs once everything is decoded because the
+        expression may name fields that decode later.  A present array
+        with count 0 (the present-zero marker) is checked like any other;
+        an absent one passes only when the array is optional or the count
+        is 0.  A field whose union arm was not decoded is not checked.
+
+        A command decoder stops at a failure.  A struct decoder only flags
+        it and goes on, because the fields after it have been consumed
+        already and its caller decodes on; the dispatcher will not run a
+        command that decoded fatal."""
         if not self._counted_arrays:
             return ''
         ind = '    ' * indent
-        lines = [f'{ind}/* A counted array must carry every element the callee'
-                 f' will read. */']
-        for var, expr in self._counted_arrays:
-            lines += [
-                f'{ind}if ({var} && {var} < (uint64_t)({expr})) {{',
-                f'{ind}    npt_cs_decoder_set_fatal(dec);',
-                f'{ind}    return;',
-                f'{ind}}}',
-            ]
+        lines = [f'{ind}/* A counted array must hold every element the callee'
+                 f' walks. */']
+        for var, expr, exact, optional in self._counted_arrays:
+            op = '!=' if exact else '<'
+            has = self._has_var(var)
+            short = f'({has} > 0 && {var} {op} (uint64_t)({expr}))'
+            if not optional:
+                # A required array the sender left out cannot satisfy a
+                # non-zero count; the callee would walk NULL.
+                short += f' ||\n{ind}    ({has} == 0 && (uint64_t)({expr}) != 0)'
+            cond = f'{ind}if ({short})'
+
+            if in_struct:
+                lines += [cond, f'{ind}    npt_cs_decoder_set_fatal(dec);']
+            else:
+                lines += [cond + ' {',
+                          f'{ind}    npt_cs_decoder_set_fatal(dec);',
+                          f'{ind}    return;',
+                          f'{ind}}}']
         self._counted_arrays = []
         return '\n'.join(lines)
 
@@ -443,36 +483,38 @@ class Gen:
         if self.is_output_com_handle(field):
             count_expr = self._get_count_expr(field, prefix)
             if count_expr:
+                # The callee fills the array to count_expr's length, so the
+                # wire count, which also counts the guest ids that follow,
+                # must match it exactly (counted_array_checks).  An absent
+                # array reaches the callee as NULL.
+                cnt = self._register_counted_array(field, count_expr,
+                                                   exact=True)
+                has = self._has_var(cnt)
                 return '\n'.join([
-                    f'{ind}{{',
-                    f'{ind}    const uint64_t _cnt = '
-                    f'npt_decode_array_count_unchecked(dec);',
+                    f'{ind}{cnt} = npt_decode_array_count_unchecked(dec);',
+                    f'{ind}{has} = {cnt} != 0;',
+                    f'{ind}{prefix}_guest_id_count_{field.name} = (uint32_t){cnt};',
+                    f'{ind}if ({cnt}) {{',
                     f'{ind}    {prefix}{field.name} = '
-                    f'npt_cs_decoder_alloc_temp_array(dec, sizeof(void *), '
-                    f'_cnt);',
-                    f'{ind}    {prefix}_guest_ids_{field.name} = _cnt ? '
-                    f'npt_cs_decoder_alloc_temp_array(dec, sizeof(uint64_t), '
-                    f'_cnt) : NULL;',
-                    f'{ind}    {prefix}_guest_id_count_{field.name} = '
-                    f'(uint32_t)_cnt;',
-                    f'{ind}    if (_cnt && (!{prefix}{field.name} || '
-                    f'!{prefix}_guest_ids_{field.name})) return;',
-                    f'{ind}    if (_cnt) memset({prefix}{field.name}, 0, '
-                    f'sizeof(void *) * _cnt);',
+                    f'npt_cs_decoder_alloc_temp_array(dec, sizeof(void *), {cnt});',
+                    f'{ind}    {prefix}_guest_ids_{field.name} = '
+                    f'npt_cs_decoder_alloc_temp_array(dec, sizeof(uint64_t), {cnt});',
+                    f'{ind}    if (!{prefix}{field.name} || '
+                    f'!{prefix}_guest_ids_{field.name}) return;',
+                    f'{ind}    memset({prefix}{field.name}, 0, sizeof(void *) * {cnt});',
                 ] + ([
-                    f'{ind}    {prefix}_refs_{field.name} = _cnt ? '
+                    f'{ind}    {prefix}_refs_{field.name} = '
                     f'npt_cs_decoder_alloc_temp_array(dec, '
-                    f'sizeof(struct npt_wire_object_ref), _cnt) : NULL;',
-                    f'{ind}    if (_cnt && !{prefix}_refs_{field.name}) return;',
-                    f'{ind}    if (_cnt) memset({prefix}_refs_{field.name}, 0, '
-                    f'sizeof(struct npt_wire_object_ref) * _cnt);',
+                    f'sizeof(struct npt_wire_object_ref), {cnt});',
+                    f'{ind}    if (!{prefix}_refs_{field.name}) return;',
+                    f'{ind}    memset({prefix}_refs_{field.name}, 0, '
+                    f'sizeof(struct npt_wire_object_ref) * {cnt});',
                 ] if canonical else []) + [
-                    f'{ind}    for (uint64_t _i = 0; _i < _cnt; _i++) {{',
-                    f'{ind}        uint64_t _gid;',
-                    f'{ind}        npt_decode_uint64_t(dec, &_gid);',
-                    f'{ind}        {prefix}_guest_ids_{field.name}[_i] = '
-                    f'_gid;',
-                    f'{ind}    }}',
+                    f'{ind}    for (uint64_t _i = 0; _i < {cnt}; _i++)',
+                    f'{ind}        npt_decode_uint64_t(dec, '
+                    f'&{prefix}_guest_ids_{field.name}[_i]);',
+                    f'{ind}}} else {{',
+                    f'{ind}    {prefix}{field.name} = NULL;',
                     f'{ind}}}',
                 ])
             return '\n'.join([
@@ -1530,7 +1572,7 @@ class Gen:
             return self._decode_string(field, acc, alloc_temp)
 
         if field.is_blob:
-            return self._decode_blob(field, acc, alloc_temp)
+            return self._decode_blob(field, acc, prefix, alloc_temp)
 
         if field.indirection >= 1:
             return self._decode_pointer(field, acc, prefix, alloc_temp,
@@ -1607,27 +1649,10 @@ class Gen:
                 if field.input:
                     # INPUT array — wire format: array_count, then N handle ids.
                     # Encoder writes 0 when the input pointer is NULL.
-                    if not is_param:
-                        return [
-                            f'{{',
-                            f'    const uint64_t _count = npt_decode_array_count_unchecked(dec);',
-                            f'    if (_count) {{',
-                            f'        {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof(void *), _count);',
-                            f'        if (!{acc}) return;',
-                            f'        for (uint64_t _i = 0; _i < _count; _i++) {{',
-                            f'            npt_object_id _id;',
-                            f'            npt_decode_uint64_t(dec, &_id);',
-                            f'            {acc}[_i] = npt_object_from_id(_id);',
-                            f'        }}',
-                            f'    }} else {{',
-                            f'        {acc} = NULL;',
-                            f'    }}',
-                            f'}}',
-                        ]
-                    cnt = self._count_var(field)
-                    self._register_counted_array(field, count_expr)
+                    cnt = self._register_counted_array(field, count_expr)
                     return [
-                        f'uint64_t {cnt} = npt_decode_array_count_unchecked(dec);',
+                        f'{cnt} = npt_decode_array_count_unchecked(dec);',
+                        f'{self._has_var(cnt)} = {cnt} != 0;',
                         f'if ({cnt}) {{',
                         f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof(void *), {cnt});',
                         f'    if (!{acc}) return;',
@@ -1714,33 +1739,50 @@ class Gen:
         return self._decode_contiguous(acc, alloc_temp,
             '_str_size', 'npt_decode_char_array', '(char *)')
 
-    def _decode_blob(self, field, acc, alloc_temp):
-        return self._decode_contiguous(acc, alloc_temp,
-            '_blob_size', 'npt_decode_blob_array', '(void *)')
+    def _decode_blob(self, field, acc, prefix, alloc_temp):
+        count_expr = self._get_count_expr(field, prefix)
+        if not alloc_temp or count_expr is None:
+            return self._decode_contiguous(acc, alloc_temp,
+                '_blob_size', 'npt_decode_blob_array', '(void *)')
+        cnt = self._register_counted_array(field, count_expr)
+        return [
+            f'{cnt} = npt_decode_array_count_unchecked(dec);',
+            f'{self._has_var(cnt)} = {cnt} != 0;',
+            f'if ({cnt}) {{',
+            f'    {acc} = npt_cs_decoder_alloc_temp(dec, {cnt});',
+            f'    if (!{acc}) return;',
+            f'    npt_decode_blob_array(dec, (void *){acc}, {cnt});',
+            f'}} else {{',
+            f'    {acc} = NULL;',
+            f'}}',
+        ]
 
     def _decode_string_array(self, field, acc, prefix, alloc_temp, is_wide):
-        decode_fn = 'npt_decode_wchar_array' if is_wide else 'npt_decode_blob_array'
-        cast = '(WCHAR *)' if is_wide else '(void *)'
+        # The char variant terminates each string as the wide one does,
+        # so the callee's strlen stays inside the buffer.
+        decode_fn = 'npt_decode_wchar_array' if is_wide else 'npt_decode_char_array'
+        cast = '(WCHAR *)' if is_wide else '(char *)'
         if alloc_temp:
+            cnt = self._register_counted_array(
+                field, self._get_count_expr(field, prefix))
             return [
-                f'{{',
-                f'    const uint64_t _count = npt_decode_array_count_unchecked(dec);',
-                f'    if (_count) {{',
-                f'        {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof(void *), _count);',
-                f'        if (!{acc}) return;',
-                f'        for (uint64_t _i = 0; _i < _count; _i++) {{',
-                f'            const uint64_t _slen = npt_decode_array_count_unchecked(dec);',
-                f'            if (_slen) {{',
-                f'                {acc}[_i] = npt_cs_decoder_alloc_temp(dec, _slen);',
-                f'                if (!{acc}[_i]) return;',
-                f'                {decode_fn}(dec, {cast}{acc}[_i], _slen);',
-                f'            }} else {{',
-                f'                {acc}[_i] = NULL;',
-                f'            }}',
+                f'{cnt} = npt_decode_array_count_unchecked(dec);',
+                f'{self._has_var(cnt)} = {cnt} != 0;',
+                f'if ({cnt}) {{',
+                f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof(void *), {cnt});',
+                f'    if (!{acc}) return;',
+                f'    for (uint64_t _i = 0; _i < {cnt}; _i++) {{',
+                f'        const uint64_t _slen = npt_decode_array_count_unchecked(dec);',
+                f'        if (_slen) {{',
+                f'            {acc}[_i] = npt_cs_decoder_alloc_temp(dec, _slen);',
+                f'            if (!{acc}[_i]) return;',
+                f'            {decode_fn}(dec, {cast}{acc}[_i], _slen);',
+                f'        }} else {{',
+                f'            {acc}[_i] = NULL;',
                 f'        }}',
-                f'    }} else {{',
-                f'        {acc} = NULL;',
                 f'    }}',
+                f'}} else {{',
+                f'    {acc} = NULL;',
                 f'}}',
             ]
         else:
@@ -1757,30 +1799,6 @@ class Gen:
                 f'}}',
             ]
 
-    def _decode_array_unchecked(self, field, acc, base, count_expr):
-        """Counted array inside a struct: the wire count is used as-is."""
-        if base in PRIMITIVE_NAMES or field.is_enum:
-            elem = [f'    npt_decode_{field.type_name}_array(dec, '
-                    f'({field.type_name} *){acc}, _count);']
-        else:
-            elem = [f'    for (uint32_t _i = 0; _i < (uint32_t)_count; _i++)',
-                    f'        npt_decode_{field.type_name}(dec, '
-                    f'({field.type_name} *)&{acc}[_i]);']
-        return [
-            f'{{',
-            f'    uint64_t _count = 0;',
-            f'    if (npt_decode_counted_pointer_count(dec, &_count)) {{',
-            f'        {acc} = npt_cs_decoder_alloc_temp_array(dec, '
-            f'sizeof({field.type_name}), _count ? _count : 1);',
-            f'        if (!{acc}) return;',
-            *[f'    {line}' for line in elem],
-            f'    }} else {{',
-            f'        (void)({count_expr}); /* unused: count_expr from registry */',
-            f'        {acc} = NULL;',
-            f'    }}',
-            f'}}',
-        ]
-
     def _decode_pointer(self, field, acc, prefix, alloc_temp,
                         is_param=False):
         count_expr = self._get_count_expr(field, prefix)
@@ -1792,22 +1810,21 @@ class Gen:
         # count doesn't occur in the registry today.
         if field.indirection >= 2 and count_expr is not None and not field.is_handle \
                 and alloc_temp:
+            cnt = self._register_counted_array(field, count_expr)
             return [
-                f'{{',
-                f'    uint64_t _count = 0;',
-                f'    if (npt_decode_counted_pointer_count(dec, &_count)) {{',
-                f'        {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name} *), _count ? _count : 1);',
-                f'        if (!{acc}) return;',
-                f'        for (uint32_t _i = 0; _i < (uint32_t)_count; _i++) {{',
-                f'            {field.type_name} *_elem = npt_cs_decoder_alloc_temp(dec, sizeof({field.type_name}));',
-                f'            if (!_elem) return;',
-                f'            npt_decode_{field.type_name}(dec, _elem);',
-                f'            (({field.type_name} **){acc})[_i] = _elem;',
-                f'        }}',
-                f'    }} else {{',
-                f'        (void)({count_expr}); /* unused: count_expr from registry */',
-                f'        {acc} = NULL;',
+                f'{self._has_var(cnt)} = 0;',
+                f'if (npt_decode_counted_pointer_count(dec, &{cnt})) {{',
+                f'    {self._has_var(cnt)} = 1;',
+                f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name} *), {cnt} ? {cnt} : 1);',
+                f'    if (!{acc}) return;',
+                f'    for (uint32_t _i = 0; _i < (uint32_t){cnt}; _i++) {{',
+                f'        {field.type_name} *_elem = npt_cs_decoder_alloc_temp(dec, sizeof({field.type_name}));',
+                f'        if (!_elem) return;',
+                f'        npt_decode_{field.type_name}(dec, _elem);',
+                f'        (({field.type_name} **){acc})[_i] = _elem;',
                 f'    }}',
+                f'}} else {{',
+                f'    {acc} = NULL;',
                 f'}}',
             ]
 
@@ -1840,16 +1857,12 @@ class Gen:
 
         base = self.reg.resolve_alias_chain(field.type_name)
         if alloc_temp:
-            # Optional array: encoder writes count=0 for NULL pointers, count=N
-            # for non-NULL.  We don't validate the count against the
-            # registry's count_expr because callers may legitimately pass NULL
-            # even when the descriptor says non-zero (e.g., D3D11 textures
-            # with no initial data).
-            if not is_param:
-                return self._decode_array_unchecked(field, acc, base,
-                                                    count_expr)
-            cnt = self._count_var(field)
-            self._register_counted_array(field, count_expr)
+            # The encoder writes 0 for a NULL pointer, the present-zero
+            # marker for a non-NULL one with count 0, N otherwise.  A NULL
+            # array with a non-zero count is the callee's to judge (D3D11
+            # textures without initial data), a present one is checked
+            # against the count by counted_array_checks.
+            cnt = self._register_counted_array(field, count_expr)
             if base in PRIMITIVE_NAMES or field.is_enum:
                 elem = [
                     f'    npt_decode_{field.type_name}_array(dec, '
@@ -1862,8 +1875,9 @@ class Gen:
                     f'({field.type_name} *)&{acc}[_i]);',
                 ]
             return [
-                f'uint64_t {cnt} = 0;',
+                f'{self._has_var(cnt)} = 0;',
                 f'if (npt_decode_counted_pointer_count(dec, &{cnt})) {{',
+                f'    {self._has_var(cnt)} = 1;',
                 f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, '
                 f'sizeof({field.type_name}), {cnt} ? {cnt} : 1);',
                 f'    if (!{acc}) return;',

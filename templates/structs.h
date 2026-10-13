@@ -55,16 +55,25 @@ ${GEN.encode_field(item, 'val->')}
 % endfor
 }
 
+<%
+    GEN.begin_decode()
+    _decode_body = '\n'.join(
+        GEN.decode_bitfield(item[1], 'val->') if isinstance(item, tuple)
+        else GEN.decode_field(item, 'val->', alloc_temp=True)
+        for item in processed)
+    _count_decls = GEN.counted_array_decls()
+    _count_checks = GEN.counted_array_checks(in_struct=True)
+%>\
 static inline void
 npt_decode_${ty.name}(struct npt_cs_decoder *dec, ${ty.name} *val)
 {
-% for item in processed:
-% if isinstance(item, tuple):
-${GEN.decode_bitfield(item[1], 'val->')}
-% else:
-${GEN.decode_field(item, 'val->', alloc_temp=True)}
+% if _count_decls:
+${_count_decls}
 % endif
-% endfor
+${_decode_body}
+% if _count_checks:
+${_count_checks}
+% endif
 }
 
 % if IS_HOST and GEN.type_needs_replace_handle(ty):
