@@ -423,10 +423,16 @@ class MidlConverter:
         return field
 
     def convert_method(self, m) -> dict:
-        ret_type, _, _, _ = self.resolve_type(m.return_type)
+        ret_type, ret_indirection, ret_const, _ = self.resolve_type(m.return_type)
         result: dict = {"name": m.name}
-        if ret_type != "void":
+        if ret_type != "void" or ret_indirection:
             result["return"] = ret_type
+        if ret_indirection:
+            # The pointer has no wire form; the generator needs to know it
+            # is there to get the vtable slot's ABI right.
+            result["return_indirection"] = ret_indirection
+            if ret_const:
+                result["return_const"] = True
         if m.params:
             result["params"] = [
                 self.convert_method_param(p, i) for i, p in enumerate(m.params)

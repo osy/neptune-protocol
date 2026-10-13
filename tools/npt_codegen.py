@@ -709,6 +709,27 @@ class Gen:
         # categories (interface returns don't occur by value).
         return True
 
+    def method_returns_aggregate(self, method):
+        """is_aggregate_return for a method, which also knows that a
+        returned pointer is a scalar in a register."""
+        return (not getattr(method, 'return_indirection', 0)
+                and self.is_aggregate_return(method.return_type))
+
+    def method_ret_c_type(self, method):
+        """C return type of a method's vtable slot: a pointer return as
+        declared, an aggregate as the hidden-pointer return
+        (`is_aggregate_return`), anything else by value."""
+        depth = getattr(method, 'return_indirection', 0)
+        if depth:
+            base = method.return_type
+            if base in (None, '', 'VOID'):
+                base = 'void'
+            const = 'const ' if method.return_const else ''
+            return f'{const}{base} {"*" * depth}'
+        if self.is_aggregate_return(method.return_type):
+            return f'{method.return_type} *'
+        return self.ret_type_str(method.return_type)
+
     # ------------------------------------------------------------------
     # Reply-payload sizing (used by templates and `_sizeof_pointer`)
     # ------------------------------------------------------------------

@@ -165,7 +165,7 @@ class Field:
 
 class Method:
     __slots__ = ('name', 'return_type', 'params', 'wire_index', 'id',
-                 'skip_default', 'canonical')
+                 'skip_default', 'canonical', 'on_wire')
 
     def __init__(self, raw, index):
         self.name = raw['name']
@@ -175,6 +175,8 @@ class Method:
         self.wire_index = raw.get('index', index)
         self.id = raw.get('id')
         self.canonical = raw.get('canonical')
+        self.on_wire = (not raw.get('unsupported', False)
+                        and not raw.get('return_indirection', 0))
 
 
 class TypeInfo:
@@ -784,6 +786,8 @@ def _anon_union_members_compatible(reg, anon_type):
 
 def should_skip_method(reg, method):
     """Return (skip, reason) for a method."""
+    if not getattr(method, 'on_wire', True):
+        return True, "no command on the wire"
     # Check return type
     ret_type = method.return_type if hasattr(method, 'return_type') else None
     if ret_type:

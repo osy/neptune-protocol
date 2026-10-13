@@ -27,7 +27,7 @@ def overrides_name(iface_name):
 /* ================================================================== */
 
 % for iface in ALL_INTERFACES:
-% for method in iface.methods:
+% for method in [m for m in iface.methods if m.on_wire]:
 struct npt_command_${method_full_name(iface.name, method.name)};
 % endfor
 % endfor
@@ -40,7 +40,7 @@ struct npt_command_${func.name};
 /* ================================================================== */
 
 % for iface in ALL_INTERFACES:
-% for method in iface.methods:
+% for method in [m for m in iface.methods if m.on_wire]:
 <%
     pfn_name, typedef_str, call_args, vtable_idx = GEN.vtable_call_args(method, iface.name)
 %>\
@@ -62,7 +62,7 @@ ${GEN.function_pfn_typedef(func)};
 
 % for iface in ALL_INTERFACES:
 struct ${overrides_name(iface.name)} {
-% for method in iface.methods:
+% for method in [m for m in iface.methods if m.on_wire]:
 <%
     fname = method_full_name(iface.name, method.name)
     ret = GEN.ret_type_str(method.return_type)

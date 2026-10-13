@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "types": [
     {"name": "DWORD", "primitive": "uint32_t"},
     {"name": "int", "primitive": "int32_t"},
@@ -454,6 +454,55 @@
       "name": "ID3D12Fence",
       "methods": [
         {"name": "SetEventOnCompletion", "skip_default": true}
+      ]
+    },
+    {
+      "name": "ID3D10Blob",
+      "methods": [
+        {"name": "GetBufferPointer", "unsupported": true}
+      ]
+    },
+    {
+      "name": "IDXGISurface",
+      "methods": [
+        {"name": "Map", "unsupported": true}
+      ]
+    },
+    {
+      "name": "IDXGIOutputDuplication",
+      "methods": [
+        {"name": "MapDesktopSurface", "unsupported": true}
+      ]
+    },
+    {
+      "name": "ID3D11VideoContext",
+      "methods": [
+        {"name": "GetDecoderBuffer", "unsupported": true},
+        {"name": "ReleaseDecoderBuffer", "unsupported": true}
+      ]
+    },
+    {
+      "name": "ID3D12RootSignatureDeserializer",
+      "methods": [
+        {"name": "GetRootSignatureDesc", "unsupported": true}
+      ]
+    },
+    {
+      "name": "ID3D12VersionedRootSignatureDeserializer",
+      "methods": [
+        {"name": "GetUnconvertedRootSignatureDesc", "unsupported": true}
+      ]
+    },
+    {
+      "name": "ID3D12StateObjectProperties",
+      "methods": [
+        {"name": "GetShaderIdentifier", "unsupported": true}
+      ]
+    },
+    {
+      "name": "ID3D12WorkGraphProperties",
+      "methods": [
+        {"name": "GetProgramName", "unsupported": true}
       ]
     },
     {

@@ -86,7 +86,7 @@ ${code}
 \
 ## ========== Interface methods ==========
 % for iface in INTERFACES:
-% for method in iface.methods:
+% for method in [m for m in iface.methods if m.on_wire]:
 <%
     fname = method_full_name(iface.name, method.name)
     GEN.set_context(f'{iface.name}::{method.name}')

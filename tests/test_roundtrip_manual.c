@@ -985,41 +985,6 @@ static int test_manual_dispatch_OMGetBlendState(void)
     return result;
 }
 
-static int test_manual_dispatch_GetDecoderBuffer(void)
-{
-    /* CMD body: uint64 pDecoder id + int32 Type enum */
-    uint8_t cmd_buf[64] = {0};
-    struct npt_cs_encoder enc = npt_test_encoder_init(cmd_buf, sizeof(cmd_buf));
-    uint64_t fake_decoder = 0x1122334455667788ULL;
-    npt_encode_uint64_t(&enc, &fake_decoder);
-    int32_t buf_type = 0; /* D3D11_VIDEO_DECODER_BUFFER_PICTURE_PARAMETERS */
-    npt_encode_int32_t(&enc, &buf_type);
-    size_t cmd_size = npt_test_encoder_written(&enc, cmd_buf);
-
-    struct npt_cs_decoder dec = npt_test_decoder_init(cmd_buf, cmd_size);
-    struct npt_command_ID3D11VideoContext_GetDecoderBuffer args = {0};
-    npt_decode_ID3D11VideoContext_GetDecoderBuffer_args_temp(&dec, &args);
-
-    if (!args.pBufferSize || !args.ppBuffer) {
-        fprintf(stderr, "FAIL: GetDecoderBuffer output args not all allocated "
-                "(pBufferSize=%p ppBuffer=%p)\n",
-                (void *)args.pBufferSize, (void *)args.ppBuffer);
-        npt_test_cleanup(&dec);
-        return -1;
-    }
-
-    /* *args.ppBuffer is NULL after alloc; reply encoder skips the data
-     * loop in that case (count = *pBufferSize is also 0 from memset), so
-     * encoding should produce a header + simple_pointer + UINT + count(0). */
-    *args.pBufferSize = 0;
-    uint8_t reply_buf[128] = {0};
-    struct npt_cs_encoder renc = npt_test_encoder_init(reply_buf, sizeof(reply_buf));
-    npt_encode_ID3D11VideoContext_GetDecoderBuffer_reply(&renc, &args);
-    int result = (npt_test_encoder_written(&renc, reply_buf) > 0) ? 0 : -1;
-    npt_test_cleanup(&dec);
-    return result;
-}
-
 static int test_manual_dispatch_Map(void)
 {
     /* CMD body: UINT Subresource + simple_pointer(=0) for pReadRange */
@@ -1647,8 +1612,6 @@ static const struct manual_test_entry manual_tests[] = {
       test_manual_D3D12_VERSIONED_DEVICE_REMOVED_EXTENDED_DATA },
     { "dispatch ID3D11DeviceContext::OMGetBlendState",
       test_manual_dispatch_OMGetBlendState },
-    { "dispatch ID3D11VideoContext::GetDecoderBuffer",
-      test_manual_dispatch_GetDecoderBuffer },
     { "dispatch ID3D12Resource::Map",
       test_manual_dispatch_Map },
     { "dispatch ID3D12VersionedRootSignatureDeserializer::GetRootSignatureDescAtVersion",

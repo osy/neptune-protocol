@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "source_files": [
     "dxgiformat.idl",
     "dxgicommon.idl",
@@ -6647,7 +6647,8 @@
       "methods": [
         {
           "name": "GetBufferPointer",
-          "return": "VOID"
+          "return": "VOID",
+          "return_indirection": 1
         },
         {
           "name": "GetBufferSize",
@@ -37192,7 +37193,9 @@
       "methods": [
         {
           "name": "GetRootSignatureDesc",
-          "return": "D3D12_ROOT_SIGNATURE_DESC"
+          "return": "D3D12_ROOT_SIGNATURE_DESC",
+          "return_indirection": 1,
+          "return_const": true
         }
       ]
     },
@@ -37225,7 +37228,9 @@
         },
         {
           "name": "GetUnconvertedRootSignatureDesc",
-          "return": "D3D12_VERSIONED_ROOT_SIGNATURE_DESC"
+          "return": "D3D12_VERSIONED_ROOT_SIGNATURE_DESC",
+          "return_indirection": 1,
+          "return_const": true
         }
       ]
     },
@@ -42336,6 +42341,8 @@
       "methods": [
         {
           "name": "GetShaderIdentifier",
+          "return": "void",
+          "return_indirection": 1,
           "params": [
             {
               "name": "pExportName",
@@ -42459,6 +42466,8 @@
         {
           "name": "GetProgramName",
           "return": "WCHAR",
+          "return_indirection": 1,
+          "return_const": true,
           "params": [
             {
               "name": "WorkGraphIndex",

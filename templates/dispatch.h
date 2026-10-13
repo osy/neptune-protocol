@@ -39,7 +39,7 @@ ${' ' * (len('npt_dispatch_') + len(iface.name) + len('_method') + 1)}uint32_t c
 ${' ' * (len('npt_dispatch_') + len(iface.name) + len('_method') + 1)}uint64_t object_id)
 {
     switch (method_index) {
-% for method in iface.methods:
+% for method in [m for m in iface.methods if m.on_wire]:
     case ${method.wire_index}:
         npt_dispatch_${method_full_name(iface.name, method.name)}(ctx, cmd_flags, object_id);
         break;

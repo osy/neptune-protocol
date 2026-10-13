@@ -188,14 +188,28 @@ class NptMethod:
     vtable_index: int = 0     # absolute vtable slot (including inherited)
     id: Optional[int] = None  # explicit vtable id from JSON
 
-    # Guest-proxy-only annotation: when true, the generator emits ONLY a
-    # forward declaration of the default thunk -- the consumer (mesa) MUST
-    # provide a hand-written body or the link fails.  Use this for methods
-    # whose parameters cannot be auto-marshalled (e.g. CreateBuffer takes a
-    # D3D11_SUBRESOURCE_DATA whose pSysMem is an unsized const void *).
-    # Without this flag the generator would emit a default thunk that calls
-    # the encoder which silently drops the un-serializable data.
+    # Pointer depth and constness of the return type (GetShaderIdentifier's
+    # void *, GetProgramName's LPCWSTR).  A returned pointer has no wire
+    # form, so such a method is never on the wire; see `on_wire`.
+    return_indirection: int = 0
+    return_const: bool = False
+
+    # Guest-proxy-only annotation: when true, the generated default thunk
+    # aborts at runtime and the consumer (mesa) must install a hand-written
+    # one.  Use this for methods whose parameters cannot be auto-marshalled
+    # (e.g. CreateBuffer takes a D3D11_SUBRESOURCE_DATA whose pSysMem is an
+    # unsized const void *).  Without this flag the generator would emit a
+    # default thunk that calls the encoder which silently drops the
+    # un-serializable data.
     skip_default: bool = False
+
+    # The method has no transport: no command is generated for it on
+    # either side and the default thunk fails the call cleanly (a failure
+    # HRESULT, a NULL pointer, zeroed outputs) without touching the wire.
+    # For methods whose results the protocol cannot carry back, such as a
+    # pointer into host memory.  A hand-written override may still
+    # implement the method locally.
+    unsupported: bool = False
 
     # Guest-proxy-only annotation: when true, the generator emits a sync
     # (npt_call_) thunk regardless of multi_ring_enabled.  Use for methods
@@ -230,6 +244,11 @@ class NptMethod:
     #             and its inputs are at most a REFIID.
     # None on a method that returns no COM object.
     canonical: Optional[Any] = None
+
+    @property
+    def on_wire(self) -> bool:
+        """Whether the method has a command on the wire."""
+        return not self.unsupported and not self.return_indirection
 
 
 @dataclass
@@ -514,7 +533,10 @@ def _parse_method(raw, index):
         params=params,
         wire_index=raw.get('index', index),
         id=raw.get('id'),
+        return_indirection=int(raw.get('return_indirection', 0)),
+        return_const=bool(raw.get('return_const', False)),
         skip_default=bool(raw.get('skip_default', False)),
+        unsupported=bool(raw.get('unsupported', False)),
         force_sync=bool(raw.get('force_sync', False)),
         staged=(bool(raw['staged']) if 'staged' in raw else None),
         canonical=raw.get('canonical'),
@@ -846,6 +868,7 @@ class TypeRegistry:
         # Validate field constraints before code generation
         self._validate_fields()
         self._validate_canonical()
+        self._validate_wire_methods()
 
         # Resolve size field dereference counts
         self._resolve_size_derefs()
@@ -910,6 +933,28 @@ class TypeRegistry:
                 mctx = f'{ctx}.{method.name}'
                 for param in method.params:
                     check_field(param, mctx)
+
+    def _validate_wire_methods(self):
+        """Check what the cmd_type layout and the transport can express:
+        an interface id fits 16 bits and a method's wire index 8 (see
+        NPT_CMD_TYPE), and a method returning a pointer is marked
+        unsupported or skip_default, since the pointer cannot cross."""
+        for iface in self.interfaces:
+            if iface.interface_id > 0xFFFF:
+                raise ValueError(
+                    f"{iface.name}: interface id {iface.interface_id} does "
+                    f"not fit the 16-bit cmd_type field")
+            for m in iface.methods:
+                if not 0 <= m.wire_index <= 0xFF:
+                    raise ValueError(
+                        f"{iface.name}::{m.name}: wire index {m.wire_index} "
+                        f"does not fit the 8-bit cmd_type field")
+                if (m.return_indirection and not m.unsupported
+                        and not m.skip_default):
+                    raise ValueError(
+                        f"{iface.name}::{m.name} returns a pointer, which "
+                        f"has no wire form: mark it unsupported or "
+                        f"skip_default in the overlay")
 
     def _validate_canonical(self):
         """Resolve NptMethod.canonical for every method that returns a COM

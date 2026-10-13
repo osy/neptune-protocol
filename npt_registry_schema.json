@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "title": "Neptune MIDL Registry Schema",
-  "description": "Unified schema for Neptune MIDL parser output and overlay JSON. Version 1.",
+  "description": "Unified schema for Neptune MIDL parser output and overlay JSON. Version 2.",
   "type": "object",
   "required": ["version", "types"],
   "properties": {
     "version": {
       "type": "integer",
-      "const": 1
+      "const": 2
     },
     "source_files": {
       "type": "array",
@@ -157,6 +157,17 @@
           "description": "Wire protocol method index. Auto-incremented if absent."
         },
         "return": { "type": "string", "description": "Return type" },
+        "return_indirection": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Pointer depth of the return type (void * GetShaderIdentifier is return void, return_indirection 1). A pointer cannot cross the wire, so such a method must be unsupported or skip_default."
+        },
+        "return_const": {
+          "type": "boolean",
+          "default": false,
+          "description": "The returned pointer points to const."
+        },
         "id": {
           "type": "integer",
           "description": "COM vtable position (computed from inheritance)."
@@ -168,7 +179,12 @@
         "skip_default": {
           "type": "boolean",
           "default": false,
-          "description": "When true, the generator emits only a forward declaration of the default thunk; the consumer must provide a hand-written body."
+          "description": "When true, the generated default thunk aborts at runtime; the consumer must install a hand-written one."
+        },
+        "unsupported": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, the method has no command on the wire: the generated default thunk fails the call (a failure HRESULT, a NULL pointer, zeroed outputs) without a round trip, and the host has no dispatch for it. For methods whose results the protocol cannot carry, such as pointers into host memory."
         },
         "force_sync": {
           "type": "boolean",

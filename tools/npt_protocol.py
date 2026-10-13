@@ -399,7 +399,8 @@ def generate_client(registry, gen, outdir):
 def generate_dispatch(registry, gen, outdir, includes):
     """Generate dispatch headers (host-side only)."""
     all_interfaces = [i for i in registry.interfaces
-                      if i.uuid and i.name != 'IUnknown' and i.methods]
+                      if i.uuid and i.name != 'IUnknown'
+                      and any(m.on_wire for m in i.methods)]
 
     # Dispatch types (PFN typedefs, override structs, context)
     content = render_template('dispatch_types.h',

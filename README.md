@@ -129,6 +129,9 @@ a fork of the SDK headers, for example:
   dropped from the wire),
 - per-method tweaks such as `skip_default: true` to opt a method out of
   the generator's default thunk in favour of a hand-written one,
+- `unsupported: true` on a method the protocol cannot carry (one that
+  returns a pointer, or hands back host memory): it gets no command on
+  the wire and its default thunk fails the call locally,
 - `canonical` on a method that returns a COM object, only where it differs
   from the default for its name: a `Create*`/`Open*` method defaults to
   `false` (a new object: the guest mints its id, no reply), any other to

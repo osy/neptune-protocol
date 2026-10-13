@@ -55,7 +55,7 @@ def fmt_param_list(method):
     # MSVC C++ member functions and widl-generated C vtables (vkd3d,
     # dxvk); a by-value slot here would corrupt the call.
     parts = ['void *self']
-    if GEN.is_aggregate_return(method.return_type):
+    if GEN.method_returns_aggregate(method):
         parts.append(f'{method.return_type} *_ret_out')
     for p in method.params:
         parts.append(fmt_param_decl(p))
@@ -64,9 +64,7 @@ def thunk_name(iface_name, method_name):
     return GEN.thunk_name(iface_name, method_name)
 
 def ret_type(method):
-    if GEN.is_aggregate_return(method.return_type):
-        return f'{method.return_type} *'
-    return GEN.ret_type_str(method.return_type)
+    return GEN.method_ret_c_type(method)
 %>\
 
 <%

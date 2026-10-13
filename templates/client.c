@@ -93,9 +93,7 @@ def output_com_handle_params(method):
 def ret_type_str(method):
     # Aggregate returns use the COM x64 hidden-return-pointer ABI: the
     # thunk takes a `RET *_ret_out` right after `self` and returns it.
-    if GEN.is_aggregate_return(method.return_type):
-        return f'{method.return_type} *'
-    return GEN.ret_type_str(method.return_type)
+    return GEN.method_ret_c_type(method)
 
 def fallback_ret(method):
     if not GEN.has_return(method.return_type):
@@ -188,7 +186,7 @@ npt_${GROUP_NAME}_default_Release(void *self)
     tname = thunk_name(iface.name, method.name)
     rt = ret_type_str(method)
     has_ret = GEN.has_return(method.return_type)
-    is_agg = GEN.is_aggregate_return(method.return_type)
+    is_agg = GEN.method_returns_aggregate(method)
     out_handles = output_com_handle_params(method)
     # Sync-vs-async: GEN.method_always_sync (npt_codegen.py) is the one
     # statement of the rule.
@@ -254,7 +252,50 @@ npt_${GROUP_NAME}_default_Release(void *self)
                         f'\'{cp.name}\' declared before it; the reply '
                         f'decoder would size the refs by the host\'s count')
 %>\
-% if method.skip_default:
+% if method.unsupported:
+/* ${iface.name}::${method.name} has no transport (unsupported): fail the
+ * call without touching the wire. */
+${rt} NPT_STDMETHODCALLTYPE
+${tname}(\
+void *self\
+% if is_agg:
+, ${method.return_type} *_ret_out\
+% endif
+% for p in method.params:
+, ${fmt_param_decl(p)}\
+% endfor
+)
+{
+    (void)self;
+% for p in method.params:
+% if p.output and not p.input and p.indirection == 2:
+    if (${p.name})
+        *${p.name} = NULL;
+% elif p.output and not p.input and p.indirection == 1 and p.type_name not in ('void', 'VOID') and p.count is None:
+    if (${p.name})
+        memset(${p.name}, 0, sizeof(*${p.name}));
+% else:
+    (void)${p.name};
+% endif
+% endfor
+    static bool _logged;
+    if (!_logged) {
+        _logged = true;
+        npt_log("${iface.name}::${method.name} is not supported over Neptune");
+    }
+% if method.return_indirection:
+    return NULL;
+% elif is_agg:
+    if (_ret_out) memset(_ret_out, 0, sizeof(*_ret_out));
+    return _ret_out;
+% elif has_ret and method.return_type == 'HRESULT':
+    return (HRESULT)0x80004001 /* E_NOTIMPL */;
+% elif has_ret:
+    return ${fallback_ret(method)};
+% endif
+}
+
+% elif method.skip_default:
 /* skip_default: ${iface.name}::${method.name} -- override required.
  * The default body aborts loudly so a missing override is a runtime
  * failure rather than a silent data drop. */
@@ -274,7 +315,9 @@ void *self\
     (void)${p.name};
 % endfor
     npt_com_assert_overridden("${iface.name}", "${method.name}");
-% if is_agg:
+% if method.return_indirection:
+    return NULL;
+% elif is_agg:
     if (_ret_out) memset(_ret_out, 0, sizeof(*_ret_out));
     return _ret_out;
 % elif has_ret:
