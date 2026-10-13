@@ -80,6 +80,7 @@ npt_codec_files = []
 foreach codec : npt_codec_headers
   npt_codec_files += files('codecs' / codec)
 endforeach
+npt_codec_files += files('transport/npt_protocol_transport.h')
 
 # Derive interface family names from the registry JSON so the list
 # stays in sync with the generator automatically.
@@ -103,6 +104,7 @@ npt_protocol_host_outputs = [
 foreach codec : npt_codec_headers
   npt_protocol_host_outputs += codec
 endforeach
+npt_protocol_host_outputs += 'npt_protocol_transport.h'
 foreach family : command_headers
   npt_protocol_host_outputs += 'npt_protocol_host_' + family + '.h'
 endforeach

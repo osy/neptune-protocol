@@ -95,6 +95,9 @@ BUILTIN_STRUCT_NAMES = {'GUID', 'POINT', 'RECT', 'LONG'}
 # Hand-written codec headers (one per manual_codec type in the registry)
 CODEC_DIR = NPT_DIR / 'codecs'
 
+# Hand-written transport (group 0) definitions, shipped verbatim
+TRANSPORT_HEADER = NPT_DIR / 'transport' / 'npt_protocol_transport.h'
+
 
 def codec_header_name(ntype):
     """Output file name of a manual_codec type's hand-written codec."""
@@ -263,6 +266,12 @@ def generate_codecs(registry, outdir):
                 f"{ntype.name} is marked manual_codec but {src} is missing")
         write_file(outdir, codec_header_name(ntype),
                    src.read_text(encoding='utf-8'))
+
+
+def generate_transport(outdir):
+    """Copy the hand-written transport header beside the output."""
+    write_file(outdir, TRANSPORT_HEADER.name,
+               TRANSPORT_HEADER.read_text(encoding='utf-8'))
 
 
 def generate_commands(registry, gen, side, outdir):
@@ -498,6 +507,7 @@ def main():
     # All structs in the shared file, plus the hand-written codecs
     generate_structs(registry, gen, args.side, args.outdir)
     generate_codecs(registry, args.outdir)
+    generate_transport(args.outdir)
 
     # Commands (per-family + toplevel)
     includes = generate_commands(registry, gen, args.side, args.outdir)

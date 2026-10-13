@@ -7,6 +7,7 @@
  */
 
 #include "npt_protocol_host.h"
+#include "npt_protocol_transport.h"
 
 /*
  * Exercise the generated code so the compiler doesn't optimize it away.

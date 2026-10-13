@@ -29,6 +29,7 @@ representation, etc. — is documented in
 | `tools/` | Python generators (see below). |
 | `templates/` | Mako templates that the generators expand into C headers / sources. |
 | `codecs/` | Hand-written codecs for `manual_codec` types, shipped beside the generated headers. |
+| `transport/` | Hand-written transport (group 0) command definitions, shipped verbatim beside the generated headers so both ends compile one copy. |
 | `tests/` | Meson-driven roundtrip tests that encode and decode every method on every interface. |
 | `docs/` | Protocol design notes. |
 | `meson.build`, `meson_options.txt` | Build configuration. |

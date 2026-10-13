@@ -7,6 +7,7 @@
  */
 
 #include "npt_protocol_guest.h"
+#include "npt_protocol_transport.h"
 
 /*
  * Exercise the generated guest-side code.
