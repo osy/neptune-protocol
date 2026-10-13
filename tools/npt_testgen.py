@@ -109,23 +109,6 @@ def merge_overlay(base, overlay):
 
 
 # ---------------------------------------------------------------------------
-# UUID helpers
-# ---------------------------------------------------------------------------
-
-def parse_uuid(uuid_str):
-    clean = uuid_str.replace('-', '')
-    return bytes.fromhex(clean)
-
-
-def uuid_hash(uuid_bytes):
-    h = 0
-    for b in uuid_bytes:
-        h ^= b
-    return h & 0xFF
-
-
-
-# ---------------------------------------------------------------------------
 # Type registry (minimal, self-contained)
 # ---------------------------------------------------------------------------
 
@@ -181,7 +164,7 @@ class Method:
 
 class TypeInfo:
     __slots__ = ('name', 'primitive', 'fields', 'methods', 'parent_name',
-                 'uuid', 'uuid_hash', 'uuid_bytes', 'return_type', 'group',
+                 'uuid', 'return_type', 'group',
                  'id', 'params', 'alias_target', 'is_anonymous', 'value',
                  'manual_codec', 'canonical')
 
@@ -192,8 +175,6 @@ class TypeInfo:
         self.methods = []
         self.parent_name = None
         self.uuid = None
-        self.uuid_hash = 0
-        self.uuid_bytes = None
         self.return_type = None
         self.group = None
         self.id = None
@@ -275,9 +256,6 @@ class Registry:
             elif cat == 'interface':
                 t.parent_name = raw.get('parent')
                 t.uuid = raw.get('uuid')
-                if t.uuid:
-                    t.uuid_bytes = parse_uuid(t.uuid)
-                    t.uuid_hash = uuid_hash(t.uuid_bytes)
                 t.methods = [Method(m, i)
                              for i, m in enumerate(raw.get('methods', []))]
             elif cat == 'function':
@@ -297,8 +275,6 @@ class Registry:
         if 'IUnknown' not in self.types:
             iu = TypeInfo('IUnknown', 'interface')
             iu.uuid = '00000000-0000-0000-c000-000000000046'
-            iu.uuid_bytes = parse_uuid(iu.uuid)
-            iu.uuid_hash = uuid_hash(iu.uuid_bytes)
             self.types['IUnknown'] = iu
         for bname in ('GUID', 'POINT', 'RECT'):
             if bname not in self.types:

@@ -29,61 +29,6 @@ def method_full_name(iface_name, method_name):
     return GEN.method_full_name(iface_name, method_name)
 %>\
 \
-## ========== Family-specific structs (if any) ==========
-% for ty in FAMILY_STRUCTS:
-<% GEN.set_context(ty.name) %>\
-<%
-    processed = GEN.preprocess_struct_fields(ty.fields)
-%>\
-/* ${ty.name} (${'union' if ty.category.name == 'UNION' else 'struct'}) */
-
-static inline size_t
-npt_sizeof_${ty.name}(const ${ty.name} *val, int max_mode)
-{
-    size_t size = 0;
-${GEN.sizeof_struct_body(ty, processed, 'val->', 'size')}\
-    return size;
-}
-
-static inline void
-npt_encode_${ty.name}(struct npt_cs_encoder *enc, const ${ty.name} *val)
-{
-% for item in processed:
-% if isinstance(item, tuple):
-${GEN.encode_bitfield(item[1], 'val->')}
-% else:
-${GEN.encode_field(item, 'val->')}
-% endif
-% endfor
-}
-
-static inline void
-npt_decode_${ty.name}(struct npt_cs_decoder *dec, ${ty.name} *val)
-{
-% for item in processed:
-% if isinstance(item, tuple):
-${GEN.decode_bitfield(item[1], 'val->')}
-% else:
-${GEN.decode_field(item, 'val->', alloc_temp=True)}
-% endif
-% endfor
-}
-
-% if IS_HOST and GEN.type_needs_replace_handle(ty):
-static inline void
-npt_replace_${ty.name}_handle(struct npt_dispatch_context *ctx, ${ty.name} *val)
-{
-% for field in ty.fields:
-<% code = GEN.replace_handle_field(field, 'val->') %>\
-% if code.strip():
-${code}
-% endif
-% endfor
-}
-
-% endif
-% endfor
-\
 ## ========== Interface methods ==========
 % for iface in INTERFACES:
 % for method in [m for m in iface.methods if m.on_wire]:

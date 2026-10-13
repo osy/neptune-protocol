@@ -279,11 +279,9 @@ class NptType:
     staged_methods: bool = False
     parent: Optional['NptType'] = None  # resolved
     uuid: Optional[str] = None
-    uuid_hash: int = 0
-    uuid_bytes: Optional[bytes] = None
     # Pinned interface id from npt_interface_ids.json.  Unique across the
-    # registry.  Used as the wire-format routing key (replaces uuid_hash
-    # for dispatch) and as the object_type tag in the host runtime.
+    # registry.  Used as the wire-format routing key and as the
+    # object_type tag in the host runtime.
     interface_id: int = -1
 
     # For functions
@@ -420,21 +418,6 @@ def merge_overlay(base, overlay):
 # ---------------------------------------------------------------------------
 # UUID helpers
 # ---------------------------------------------------------------------------
-
-def parse_uuid(uuid_str):
-    """Parse a UUID string like '189819f1-1db6-4b57-be54-1821339b85f7' into 16 bytes."""
-    clean = uuid_str.replace('-', '')
-    return bytes.fromhex(clean)
-
-
-def uuid_hash(uuid_bytes):
-    """Compute an 8-bit hash from 16-byte UUID for dispatch routing."""
-    # Simple XOR fold of all bytes
-    h = 0
-    for b in uuid_bytes:
-        h ^= b
-    return h & 0xFF
-
 
 def uuid_to_guid_init(uuid_str):
     """Convert UUID string to C GUID initializer components."""
@@ -754,9 +737,6 @@ class TypeRegistry:
                 ntype.parent_name = raw.get('parent')
                 ntype.staged_methods = bool(raw.get('staged_methods', False))
                 ntype.uuid = raw.get('uuid')
-                if ntype.uuid:
-                    ntype.uuid_bytes = parse_uuid(ntype.uuid)
-                    ntype.uuid_hash = uuid_hash(ntype.uuid_bytes)
                 for i, m in enumerate(raw.get('methods', [])):
                     ntype.methods.append(_parse_method(m, i))
 
@@ -783,8 +763,6 @@ class TypeRegistry:
                 uuid='00000000-0000-0000-c000-000000000046',
                 parent_name=None,
             )
-            iunknown.uuid_bytes = parse_uuid(iunknown.uuid)
-            iunknown.uuid_hash = uuid_hash(iunknown.uuid_bytes)
             # IUnknown has 3 methods but we don't serialize them
             # (QueryInterface/AddRef/Release are handled by the runtime)
             iunknown.total_vtable_count = 3

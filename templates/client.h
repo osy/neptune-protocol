@@ -75,7 +75,7 @@ def ret_type(method):
     widest_lower = widest.name.lower()
 %>\
 /* ================================================================== */
-/* Family ${GROUP_NAME}: ${', '.join(t.name for t in tiers)}
+/* Family ${GROUP_NAME}: ${', '.join(t.name for t in tiers)} */
 /* ================================================================== */
 
 /* IUnknown thunks shared by every tier.  QueryInterface answers from

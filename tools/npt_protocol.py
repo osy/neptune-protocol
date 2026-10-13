@@ -293,7 +293,6 @@ def generate_commands(registry, gen, side, outdir):
             GEN=gen,
             IS_HOST=is_host,
             IS_GUEST=is_guest,
-            FAMILY_STRUCTS=[],
         )
         write_file(outdir, f'npt_protocol_{side}_{family_name}.h', content)
         family_names.append(family_name)
@@ -309,7 +308,6 @@ def generate_commands(registry, gen, side, outdir):
             GEN=gen,
             IS_HOST=is_host,
             IS_GUEST=is_guest,
-            FAMILY_STRUCTS=[],
         )
         write_file(outdir, f'npt_protocol_{side}_toplevel.h', content)
         family_names.append('toplevel')
