@@ -221,6 +221,7 @@
       "methods": [
         {
           "name": "RegisterDeviceRemovedEvent",
+          "skip_default": true,
           "params": [
             { "name": "hEvent", "handle": "event" }
           ]
@@ -232,6 +233,7 @@
       "methods": [
         {
           "name": "Flush1",
+          "skip_default": true,
           "params": [
             { "name": "hEvent", "handle": "event" }
           ]
@@ -243,6 +245,7 @@
       "methods": [
         {
           "name": "SetEventOnCompletion",
+          "skip_default": true,
           "params": [
             { "name": "hEvent", "handle": "event" }
           ]
@@ -254,6 +257,7 @@
       "methods": [
         {
           "name": "SetEventOnMultipleFenceCompletion",
+          "skip_default": true,
           "params": [
             { "name": "hEvent", "handle": "event" }
           ]
@@ -265,6 +269,7 @@
       "methods": [
         {
           "name": "SetEventOnCompletion",
+          "skip_default": true,
           "params": [
             { "name": "hEvent", "handle": "event" }
           ]
@@ -276,6 +281,7 @@
       "methods": [
         {
           "name": "SetBackgroundProcessingMode",
+          "skip_default": true,
           "params": [
             { "name": "hEventToSignalUponCompletion", "handle": "event" }
           ]
@@ -287,12 +293,14 @@
       "methods": [
         {
           "name": "RegisterHardwareContentProtectionTeardownStatusEvent",
+          "skip_default": true,
           "params": [
             { "name": "hEvent", "handle": "event" }
           ]
         },
         {
           "name": "RegisterVideoMemoryBudgetChangeNotificationEvent",
+          "skip_default": true,
           "params": [
             { "name": "hEvent", "handle": "event" }
           ]
@@ -304,6 +312,7 @@
       "methods": [
         {
           "name": "EnqueueSetEvent",
+          "skip_default": true,
           "params": [
             { "name": "hEvent", "handle": "event" }
           ]
@@ -315,12 +324,14 @@
       "methods": [
         {
           "name": "RegisterStereoStatusEvent",
+          "skip_default": true,
           "params": [
             { "name": "hEvent", "handle": "event" }
           ]
         },
         {
           "name": "RegisterOcclusionStatusEvent",
+          "skip_default": true,
           "params": [
             { "name": "hEvent", "handle": "event" }
           ]
@@ -332,6 +343,7 @@
       "methods": [
         {
           "name": "RegisterAdaptersChangedEvent",
+          "skip_default": true,
           "params": [
             { "name": "hEvent", "handle": "event" }
           ]

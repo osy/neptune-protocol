@@ -937,8 +937,10 @@ class TypeRegistry:
     def _validate_wire_methods(self):
         """Check what the cmd_type layout and the transport can express:
         an interface id fits 16 bits and a method's wire index 8 (see
-        NPT_CMD_TYPE), and a method returning a pointer is marked
-        unsupported or skip_default, since the pointer cannot cross."""
+        NPT_CMD_TYPE); a method returning a pointer is marked unsupported
+        or skip_default, since the pointer cannot cross; and a method
+        taking an event HANDLE is skip_default, since only an override
+        can turn the app's handle into one the host can signal."""
         for iface in self.interfaces:
             if iface.interface_id > 0xFFFF:
                 raise ValueError(
@@ -949,6 +951,13 @@ class TypeRegistry:
                     raise ValueError(
                         f"{iface.name}::{m.name}: wire index {m.wire_index} "
                         f"does not fit the 8-bit cmd_type field")
+                if (any(p.is_event_handle for p in m.params)
+                        and not m.skip_default and not m.unsupported):
+                    raise ValueError(
+                        f"{iface.name}::{m.name} takes an event HANDLE: "
+                        f"the app's handle means nothing to the host, so "
+                        f"the guest must arm a host event in a hand-written "
+                        f"override; mark it skip_default in the overlay")
                 if (m.return_indirection and not m.unsupported
                         and not m.skip_default):
                     raise ValueError(
