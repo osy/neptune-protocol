@@ -349,7 +349,15 @@ void *self\
     # the registered ids from the reply refs instead.
     single_handles = [(p, ct, iid, ce) for p, ct, iid, ce in out_handles if ce is None]
     array_handles  = [(p, ct, iid, ce) for p, ct, iid, ce in out_handles if ce is not None]
+    # With every out pointer NULL a Create only validates its inputs and
+    # answers S_FALSE, so the HRESULT is the whole result: wait for it.
+    validate_only = (out_handles and not always_sync and has_ret
+                     and method.return_type == 'HRESULT')
 %>\
+% if validate_only:
+    if (${' && '.join('!' + p.name for p, _, _, _ in out_handles)})
+        return npt_call_${fname}(${', '.join(call_args(method))});
+% endif
 % if memo:
 <%
     mp, mc_type, miid_expr, _ = single_handles[0]

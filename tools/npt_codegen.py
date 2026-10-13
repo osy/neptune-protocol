@@ -522,10 +522,16 @@ class Gen:
                 f'{ind}    uint64_t _gid;',
                 f'{ind}    npt_decode_uint64_t(dec, &_gid);',
                 f'{ind}    {prefix}_guest_id_{field.name} = _gid;',
-                f'{ind}    {prefix}{field.name} = '
+                # Id 0 is the guest's NULL out pointer, which a Create
+                # takes as "validate only": the callee must see NULL too.
+                f'{ind}    if (_gid) {{',
+                f'{ind}        {prefix}{field.name} = '
                 f'npt_cs_decoder_alloc_temp(dec, sizeof(void *));',
-                f'{ind}    if (!{prefix}{field.name}) return;',
-                f'{ind}    *{prefix}{field.name} = NULL;',
+                f'{ind}        if (!{prefix}{field.name}) return;',
+                f'{ind}        *{prefix}{field.name} = NULL;',
+                f'{ind}    }} else {{',
+                f'{ind}        {prefix}{field.name} = NULL;',
+                f'{ind}    }}',
                 f'{ind}}}',
             ])
         if not field.input:
