@@ -139,10 +139,6 @@
           "enum": [null, "com", "win32", "event"],
           "default": null,
           "description": "Type of handle"
-        },
-        "idl_param_index": {
-          "type": "integer",
-          "description": "Index of corresponding IDL parameter (for auto-dispatch mapping)"
         }
       },
       "additionalProperties": false

@@ -375,7 +375,7 @@ class MidlConverter:
             return None  # Identity typedef
         return {"name": t.name, "primitive": type_name, "source": source}
 
-    def convert_method_param(self, p, idx: int) -> dict:
+    def convert_method_param(self, p) -> dict:
         """Convert a MethodParam to a FieldObject dict."""
         type_name, indirection, is_const, handle_kind = self.resolve_type(p.type_spec)
 
@@ -419,7 +419,6 @@ class MidlConverter:
                 elif p.is_out and p.is_in:
                     field["output"] = True
 
-        field["idl_param_index"] = idx
         return field
 
     def convert_method(self, m) -> dict:
@@ -435,7 +434,7 @@ class MidlConverter:
                 result["return_const"] = True
         if m.params:
             result["params"] = [
-                self.convert_method_param(p, i) for i, p in enumerate(m.params)
+                self.convert_method_param(p) for p in m.params
             ]
         return result
 
@@ -542,12 +541,12 @@ class MidlConverter:
         # Split on commas, but not within parentheses
         parts = self._split_params(params_str)
 
-        for idx, part in enumerate(parts):
+        for part in parts:
             part = part.strip()
             if not part:
                 continue
 
-            param = self._parse_single_param(part, idx)
+            param = self._parse_single_param(part)
             if param:
                 params.append(param)
 
@@ -574,7 +573,7 @@ class MidlConverter:
             parts.append("".join(current))
         return parts
 
-    def _parse_single_param(self, text: str, idx: int) -> dict | None:
+    def _parse_single_param(self, text: str) -> dict | None:
         """Parse a single parameter from a C function prototype in cpp_quote."""
         # Strip inline // comments
         text = re.sub(r'//.*', '', text)
@@ -678,7 +677,6 @@ class MidlConverter:
             ann = parse_sal_annotation(annotation)
             self.apply_annotation(field, ann)
 
-        field["idl_param_index"] = idx
         return field
 
     # -- File processing ---------------------------------------------------

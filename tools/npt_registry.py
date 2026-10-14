@@ -104,7 +104,6 @@ class NptField:
     input: bool = True
     output: bool = False
     optional: bool = False
-    idl_param_index: Optional[int] = None
     # Computed: number of pointer dereferences needed to read the count value.
     # -1 means "not a sibling field — don't prefix" (global constant).
     _size_deref: int = -1
@@ -500,7 +499,6 @@ def _parse_field(raw, parent_name=None, index=0):
         input=raw.get('input', True),
         output=raw.get('output', False),
         optional=raw.get('optional', False),
-        idl_param_index=raw.get('idl_param_index'),
     )
 
 
