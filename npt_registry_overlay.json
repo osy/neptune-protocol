@@ -374,7 +374,10 @@
         {"name": "CreateTexture1D", "skip_default": true},
         {"name": "CreateTexture2D", "skip_default": true},
         {"name": "CreateTexture3D", "skip_default": true},
-        {"name": "GetImmediateContext", "canonical": "memo"}
+        {"name": "GetImmediateContext", "canonical": "memo"},
+        {"name": "CheckFeatureSupport", "params": [
+          {"name": "pFeatureSupportData", "input": true}
+        ]}
       ]
     },
     {
