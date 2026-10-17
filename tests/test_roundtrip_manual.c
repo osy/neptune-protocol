@@ -16,6 +16,7 @@
 #include "npt_test_harness.h"
 
 int npt_test_log_count;
+uint64_t npt_test_host_address_offset;
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"

@@ -99,6 +99,11 @@ class NptField:
     # headers, so generated code reaches them through this member's
     # storage instead of naming them directly.
     storage_member: Optional[str] = None
+    # A pointer-sized value that is an address in the host process (a
+    # D3D12 CPU descriptor handle).  The guest codec passes it through
+    # npt_guest_host_address_{to,from}_wire, which a 32-bit guest needs to
+    # hold it at all.
+    host_address: bool = False
     value: Optional[int] = None  # for enum fields
     handle: Optional[str] = None  # 'com', 'win32', or None
     input: bool = True
@@ -499,6 +504,7 @@ def _parse_field(raw, parent_name=None, index=0):
         bitwidth=raw.get('bitwidth'),
         condition=raw.get('condition'),
         storage_member=raw.get('storage_member'),
+        host_address=bool(raw.get('host_address', False)),
         value=raw.get('value'),
         handle=raw.get('handle'),
         input=raw.get('input', True),

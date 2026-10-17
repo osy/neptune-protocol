@@ -128,6 +128,11 @@
             { "type": "boolean" }
           ]
         },
+        "host_address": {
+          "type": "boolean",
+          "default": false,
+          "description": "Only valid on a pointer-sized scalar field (SIZE_T). The value is an address in the host process, such as a D3D12 CPU descriptor handle, which a 32-bit guest cannot hold. The guest codec converts it with the consumer's npt_guest_host_address_to_wire / npt_guest_host_address_from_wire (uint64_t -> uint64_t); the wire carries the host's 64-bit value and the host codec is unchanged."
+        },
         "storage_member": {
           "type": "string",
           "description": "Only valid on an anonymous union field the overlay lays over a single member the vendor headers declare (e.g. D3D12_STATE_SUBOBJECT's 'const void *pDesc'). Names that member, which must also appear as one of the union's arms. Generated code reaches every arm by reinterpreting the member's storage, so it compiles against the vendor headers (which declare only the member) and against the protocol's own definitions alike."

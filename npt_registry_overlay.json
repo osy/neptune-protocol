@@ -1130,6 +1130,12 @@
       "manual_codec": true
     },
     {
+      "name": "D3D12_CPU_DESCRIPTOR_HANDLE",
+      "fields": [
+        {"index": 0, "host_address": true}
+      ]
+    },
+    {
       "name": "D3D12_STATE_SUBOBJECT",
       "fields": [
         {

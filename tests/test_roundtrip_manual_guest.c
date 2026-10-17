@@ -412,6 +412,78 @@ static int test_guest_pointer_sized_array(void)
 }
 
 /* ================================================================== */
+/* Host addresses                                                     */
+/* ================================================================== */
+/*
+ * A CPU descriptor handle is a host address.  The guest codec passes it
+ * through npt_guest_host_address_{to,from}_wire, which the harness
+ * implements as an offset the test sets: the reply's host address must
+ * reach the caller translated, and a handle the guest sends back must
+ * reach the wire as the host address again.
+ */
+
+extern uint64_t npt_test_host_address_offset;
+
+static int test_guest_cpu_descriptor_host_address(void)
+{
+    const uint64_t offset = 0x100000000ull;
+    const uint64_t host_start = 0x119a80000ull;
+    int failures = 0;
+
+    npt_test_host_address_offset = offset;
+
+    /* GetCPUDescriptorHandleForHeapStart's reply carries the host address. */
+    uint8_t reply[sizeof(struct npt_reply_header) + 8];
+    struct npt_reply_header rh = {
+        .cmd_type = NPT_CMD_TYPE(255, NPT_IFACE_ID_ID3D12DescriptorHeap,
+                                 NPT_METHOD_ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart),
+    };
+    memcpy(reply, &rh, sizeof(rh));
+    memcpy(reply + sizeof(rh), &host_start, 8);
+    struct npt_cs_decoder dec = npt_test_decoder_init(reply, sizeof(reply));
+    D3D12_CPU_DESCRIPTOR_HANDLE start = {0};
+    npt_decode_ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart_reply(
+        &dec, &start);
+    if ((uint64_t)start.ptr != host_start - offset) {
+        fprintf(stderr, "FAIL: heap start decoded as 0x%llx, expected 0x%llx\n",
+                (unsigned long long)start.ptr,
+                (unsigned long long)(host_start - offset));
+        failures++;
+    }
+
+    /* A handle derived from it goes back as a host address. */
+    D3D12_CPU_DESCRIPTOR_HANDLE dest = { start.ptr + 3 * 32 };
+    uint8_t buf[128];
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    npt_encode_ID3D12Device_CreateShaderResourceView(&enc, 0, 0xDEAD,
+                                                     NULL, NULL, dest);
+    const size_t written = npt_test_encoder_written(&enc, buf);
+    uint64_t wire = 0;
+    if (written >= 8)
+        memcpy(&wire, buf + written - 8, sizeof(wire));
+    if (wire != host_start + 3 * 32) {
+        fprintf(stderr, "FAIL: DestDescriptor on the wire 0x%llx, "
+                "expected 0x%llx\n", (unsigned long long)wire,
+                (unsigned long long)(host_start + 3 * 32));
+        failures++;
+    }
+
+    /* A null handle stays null. */
+    D3D12_CPU_DESCRIPTOR_HANDLE null_handle = {0};
+    enc = npt_test_encoder_init(buf, sizeof(buf));
+    npt_encode_D3D12_CPU_DESCRIPTOR_HANDLE(&enc, &null_handle);
+    memcpy(&wire, buf, sizeof(wire));
+    if (wire != 0) {
+        fprintf(stderr, "FAIL: null CPU descriptor encoded as 0x%llx\n",
+                (unsigned long long)wire);
+        failures++;
+    }
+
+    npt_test_host_address_offset = 0;
+    return failures == 0 ? 0 : -1;
+}
+
+/* ================================================================== */
 /* Dispatch table                                                     */
 /* ================================================================== */
 
@@ -484,6 +556,8 @@ static const struct guest_manual_test_entry guest_manual_tests[] = {
       test_guest_pointer_sized_decode },
     { "guest pointer-sized type arrays",
       test_guest_pointer_sized_array },
+    { "guest CPU descriptor handles pass through the host-address hooks",
+      test_guest_cpu_descriptor_host_address },
 };
 
 #define GUEST_MANUAL_TEST_COUNT \

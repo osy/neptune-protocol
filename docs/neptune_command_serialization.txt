@@ -179,7 +179,17 @@ When a command parameter is an enum, it is casted to a `int32_t` and is
 serialized as a `int32_t`.
 
 When a command parameter is a `size_t`, it is casted to a `uint64_t` and is
-serialized as a `uint64_t`.
+serialized as a `uint64_t`.  The other pointer-sized types (`LONG_PTR`,
+`HANDLE`, `HWND`, `HMODULE`; `pointer_sized` in the overlay) travel the same
+way, `LONG_PTR` sign-extended to `int64_t`; a 32-bit sender widens them and a
+32-bit receiver truncates them.
+
+A field the overlay marks `host_address` (the `ptr` of
+`D3D12_CPU_DESCRIPTOR_HANDLE`) is an address in the host process and is
+serialized as the host's `uint64_t` address.  The guest holds it through
+`npt_guest_host_address_from_wire` and sends it back through
+`npt_guest_host_address_to_wire`, so a 32-bit guest can map host addresses
+into values it can hold; the host side is unchanged.
 
 ### COM Handles
 

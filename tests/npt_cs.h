@@ -97,6 +97,20 @@ npt_com_vtable(void *obj)
 /* Logging                                                             */
 /* ------------------------------------------------------------------ */
 
+/* Host addresses travel through these hooks; a test that sets the
+ * offset sees the guest codec apply them. */
+extern uint64_t npt_test_host_address_offset;
+static inline uint64_t
+npt_guest_host_address_to_wire(uint64_t guest)
+{
+   return guest ? guest + npt_test_host_address_offset : 0;
+}
+static inline uint64_t
+npt_guest_host_address_from_wire(uint64_t wire)
+{
+   return wire ? wire - npt_test_host_address_offset : 0;
+}
+
 /* Counted, not printed: tests assert that an error path logs. */
 extern int npt_test_log_count;
 #define npt_log(...) ((void)npt_test_log_count++)

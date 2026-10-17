@@ -299,8 +299,38 @@ class Gen:
             return '\n'.join(self.encode_field(f, arm_prefix, indent,
                                                for_output)
                              for f in inner)
-        lines = self._encode_field_impl(field, prefix, for_output)
+        if field.host_address and self.is_guest:
+            lines = self._encode_host_address(field, prefix)
+        else:
+            lines = self._encode_field_impl(field, prefix, for_output)
         return self._wrap_condition(field, lines, prefix, indent)
+
+    def _check_host_address(self, field: NptField):
+        if field.indirection or field.count or \
+                self.reg.resolve_alias_chain(field.type_name) != 'uint64_t':
+            raise ValueError(f'{self._context}: host_address field '
+                             f'{field.name} must be a pointer-sized scalar')
+
+    def _encode_host_address(self, field: NptField, prefix: str) -> list:
+        """Guest encode of a host_address field: the consumer maps the
+        guest's value back to the host's 64-bit address."""
+        self._check_host_address(field)
+        return ['{',
+                f'    const uint64_t _wire = npt_guest_host_address_to_wire('
+                f'(uint64_t)(uintptr_t){self._acc(field, prefix)});',
+                '    npt_encode_uint64_t(enc, &_wire);',
+                '}']
+
+    def _decode_host_address(self, field: NptField, prefix: str) -> list:
+        """Guest decode of a host_address field: the consumer maps the
+        host's 64-bit address to a value the guest can hold."""
+        self._check_host_address(field)
+        return ['{',
+                '    uint64_t _wire = 0;',
+                '    npt_decode_uint64_t(dec, &_wire);',
+                f'    {self._acc(field, prefix)} = ({field.type_name})(uintptr_t)'
+                f'npt_guest_host_address_from_wire(_wire);',
+                '}']
 
     def decode_field(self, field: NptField, prefix: str,
                      alloc_temp: bool = True, indent: int = 1,
@@ -329,8 +359,11 @@ class Gen:
                                                indent, inline_storage,
                                                is_param)
                              for f in inner)
-        lines = self._decode_field_impl(field, prefix, alloc_temp,
-                                        inline_storage, is_param)
+        if field.host_address and self.is_guest:
+            lines = self._decode_host_address(field, prefix)
+        else:
+            lines = self._decode_field_impl(field, prefix, alloc_temp,
+                                            inline_storage, is_param)
         return self._wrap_condition(field, lines, prefix, indent)
 
     def is_output_com_handle(self, field: NptField) -> bool:
