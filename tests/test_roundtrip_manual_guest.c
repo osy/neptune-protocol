@@ -263,6 +263,155 @@ static int test_guest_unsupported_reply_DRED_decode(void)
 }
 
 /* ================================================================== */
+/* Pointer-sized types                                                */
+/* ================================================================== */
+/*
+ * SIZE_T, LONG_PTR, HANDLE, HWND and HMODULE are 4 bytes on a 32-bit
+ * guest (the x86 UMD under WOW64) but 8 on the wire.  Each value sits
+ * beside a guard word: encode must not carry the guard into the high
+ * half, decode must not write over it.  On a 64-bit build the guard is
+ * just a neighbour and the tests pin the by-value conversion.
+ */
+
+#define PTR_SIZED_GUARD 0x71212c50u
+
+static int check_wire_u64(const char *what, const uint8_t *buf, size_t written,
+                          uint64_t expected)
+{
+    uint64_t wire;
+    if (written != sizeof(wire)) {
+        fprintf(stderr, "FAIL: %s: encoded %zu bytes, expected 8\n", what, written);
+        return -1;
+    }
+    memcpy(&wire, buf, sizeof(wire));
+    if (wire != expected) {
+        fprintf(stderr, "FAIL: %s: wire 0x%016llx, expected 0x%016llx\n", what,
+                (unsigned long long)wire, (unsigned long long)expected);
+        return -1;
+    }
+    return 0;
+}
+
+static int test_guest_pointer_sized_encode(void)
+{
+    struct { SIZE_T v; uint32_t guard; } size = { 0x44, PTR_SIZED_GUARD };
+    struct { LONG_PTR v; uint32_t guard; } lptr = { -2, PTR_SIZED_GUARD };
+    struct { HANDLE v; uint32_t guard; } handle =
+        { (HANDLE)(uintptr_t)0x1234, PTR_SIZED_GUARD };
+    struct { HWND v; uint32_t guard; } hwnd =
+        { (HWND)(uintptr_t)0x5678, PTR_SIZED_GUARD };
+    struct { HMODULE v; uint32_t guard; } hmod =
+        { (HMODULE)(uintptr_t)0x9abc, PTR_SIZED_GUARD };
+    uint8_t buf[16];
+    struct npt_cs_encoder enc;
+    int failures = 0;
+
+#define ENCODE_ONE(type, var, expected)                                      \
+    do {                                                                     \
+        memset(buf, 0xcd, sizeof(buf));                                      \
+        enc = npt_test_encoder_init(buf, sizeof(buf));                       \
+        if (npt_sizeof_##type(&var.v, 0) != 8) {                             \
+            fprintf(stderr, "FAIL: npt_sizeof_" #type " != 8\n");            \
+            failures++;                                                      \
+        }                                                                    \
+        npt_encode_##type(&enc, &var.v);                                     \
+        failures += check_wire_u64("encode " #type, buf,                     \
+                                   npt_test_encoder_written(&enc, buf),      \
+                                   expected) != 0;                           \
+    } while (0)
+
+    ENCODE_ONE(SIZE_T, size, 0x44);
+    ENCODE_ONE(LONG_PTR, lptr, (uint64_t)(int64_t)-2);
+    ENCODE_ONE(HANDLE, handle, 0x1234);
+    ENCODE_ONE(HWND, hwnd, 0x5678);
+    ENCODE_ONE(HMODULE, hmod, 0x9abc);
+#undef ENCODE_ONE
+
+    return failures == 0 ? 0 : -1;
+}
+
+static int test_guest_pointer_sized_decode(void)
+{
+    /* 0x44 with a high half a 32-bit guest cannot hold. */
+    const uint64_t wire = 0x7121210000000044ull;
+    uint8_t buf[8];
+    struct { SIZE_T v; uint32_t guard; } size = { 0, PTR_SIZED_GUARD };
+    struct { HANDLE v; uint32_t guard; } handle = { 0, PTR_SIZED_GUARD };
+    struct { LONG_PTR v; uint32_t guard; } lptr = { 0, PTR_SIZED_GUARD };
+    struct npt_cs_decoder dec;
+    int failures = 0;
+
+    memcpy(buf, &wire, sizeof(buf));
+    dec = npt_test_decoder_init(buf, sizeof(buf));
+    npt_decode_SIZE_T(&dec, &size.v);
+    if (size.guard != PTR_SIZED_GUARD || size.v != (SIZE_T)(uintptr_t)wire) {
+        fprintf(stderr, "FAIL: decode SIZE_T: value 0x%llx guard 0x%08x\n",
+                (unsigned long long)size.v, (unsigned)size.guard);
+        failures++;
+    }
+
+    dec = npt_test_decoder_init(buf, sizeof(buf));
+    npt_decode_HANDLE(&dec, &handle.v);
+    if (handle.guard != PTR_SIZED_GUARD ||
+        handle.v != (HANDLE)(uintptr_t)wire) {
+        fprintf(stderr, "FAIL: decode HANDLE: guard 0x%08x\n",
+                (unsigned)handle.guard);
+        failures++;
+    }
+
+    const uint64_t neg = (uint64_t)(int64_t)-3;
+    memcpy(buf, &neg, sizeof(buf));
+    dec = npt_test_decoder_init(buf, sizeof(buf));
+    npt_decode_LONG_PTR(&dec, &lptr.v);
+    if (lptr.guard != PTR_SIZED_GUARD || lptr.v != -3) {
+        fprintf(stderr, "FAIL: decode LONG_PTR: value %lld guard 0x%08x\n",
+                (long long)lptr.v, (unsigned)lptr.guard);
+        failures++;
+    }
+    return failures == 0 ? 0 : -1;
+}
+
+/* The arrays step by sizeof(SIZE_T) in memory and 8 bytes on the wire. */
+static int test_guest_pointer_sized_array(void)
+{
+    SIZE_T in[3] = { 1, 2, 3 };
+    SIZE_T out[4] = { 0, 0, 0, (SIZE_T)PTR_SIZED_GUARD };
+    uint8_t buf[32];
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    int failures = 0;
+
+    if (npt_sizeof_SIZE_T_array(in, 3) != 24) {
+        fprintf(stderr, "FAIL: npt_sizeof_SIZE_T_array(3) != 24\n");
+        failures++;
+    }
+    npt_encode_SIZE_T_array(&enc, in, 3);
+    if (npt_test_encoder_written(&enc, buf) != 24) {
+        fprintf(stderr, "FAIL: SIZE_T array encoded %zu bytes, expected 24\n",
+                npt_test_encoder_written(&enc, buf));
+        return -1;
+    }
+    for (int i = 0; i < 3; i++) {
+        uint64_t w;
+        memcpy(&w, buf + 8 * i, sizeof(w));
+        if (w != (uint64_t)(i + 1)) {
+            fprintf(stderr, "FAIL: SIZE_T array wire[%d] = 0x%llx\n", i,
+                    (unsigned long long)w);
+            failures++;
+        }
+    }
+
+    struct npt_cs_decoder dec = npt_test_decoder_init(buf, 24);
+    npt_decode_SIZE_T_array(&dec, out, 3);
+    for (int i = 0; i < 3; i++)
+        failures += out[i] != in[i];
+    if (out[3] != (SIZE_T)PTR_SIZED_GUARD) {
+        fprintf(stderr, "FAIL: SIZE_T array decode overran into out[3]\n");
+        failures++;
+    }
+    return failures == 0 ? 0 : -1;
+}
+
+/* ================================================================== */
 /* Dispatch table                                                     */
 /* ================================================================== */
 
@@ -329,6 +478,12 @@ static const struct guest_manual_test_entry guest_manual_tests[] = {
       test_guest_reply_size_upper_bound_meta },
     { "guest decode DRED GetAutoBreadcrumbsOutput unsupported reply default",
       test_guest_unsupported_reply_DRED_decode },
+    { "guest pointer-sized types encode by value",
+      test_guest_pointer_sized_encode },
+    { "guest pointer-sized types decode by value",
+      test_guest_pointer_sized_decode },
+    { "guest pointer-sized type arrays",
+      test_guest_pointer_sized_array },
 };
 
 #define GUEST_MANUAL_TEST_COUNT \

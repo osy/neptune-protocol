@@ -92,6 +92,62 @@ static inline void npt_decode_${ty.name}(struct npt_cs_decoder *dec, ${ty.name} 
                  (delegate_type and delegate_type.category.name == 'ALIAS' and
                   REG.resolve_alias_chain(delegate) in PRIMITIVE_NAMES))
 %>\
+% if ty.pointer_sized:
+<%
+    # The C type is 4 bytes on a 32-bit guest: convert by value through
+    # the matching pointer-width integer, never through a ${delegate} *.
+    assert delegate in ('uint64_t', 'int64_t'), (ty.name, delegate)
+    via = 'intptr_t' if delegate == 'int64_t' else 'uintptr_t'
+%>\
+/* ${ty.name} (pointer-sized, wire form ${delegate}) */
+
+static inline size_t
+npt_sizeof_${ty.name}(const ${ty.name} *val, int max_mode)
+{
+    /* Fixed wire size; val may be an unfilled out-param. */
+    (void)val;
+    return npt_sizeof_${delegate}(NULL, max_mode);
+}
+
+static inline void
+npt_encode_${ty.name}(struct npt_cs_encoder *enc, const ${ty.name} *val)
+{
+    const ${delegate} wire = (${delegate})(${via})*val;
+    npt_encode_${delegate}(enc, &wire);
+}
+
+static inline void
+npt_decode_${ty.name}(struct npt_cs_decoder *dec, ${ty.name} *val)
+{
+    ${delegate} wire = 0;
+    npt_decode_${delegate}(dec, &wire);
+    *val = (${ty.name})(${via})wire;
+}
+
+static inline size_t
+npt_sizeof_${ty.name}_array(const ${ty.name} *val, uint32_t count)
+{
+    (void)val;
+    return npt_sizeof_${delegate}_array(NULL, count);
+}
+
+static inline void
+npt_encode_${ty.name}_array(struct npt_cs_encoder *enc,
+                             const ${ty.name} *val, uint32_t count)
+{
+    for (uint32_t i = 0; i < count; i++)
+        npt_encode_${ty.name}(enc, &val[i]);
+}
+
+static inline void
+npt_decode_${ty.name}_array(struct npt_cs_decoder *dec,
+                             ${ty.name} *val, uint32_t count)
+{
+    for (uint32_t i = 0; i < count; i++)
+        npt_decode_${ty.name}(dec, &val[i]);
+}
+
+% else:
 /* ${ty.name} (alias for ${delegate}) */
 
 static inline size_t
@@ -133,6 +189,7 @@ npt_decode_${ty.name}_array(struct npt_cs_decoder *dec,
     npt_decode_${delegate}_array(dec, (${delegate} *)val, count);
 }
 
+% endif
 % endif
 % endfor
 

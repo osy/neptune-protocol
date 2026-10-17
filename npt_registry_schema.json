@@ -72,6 +72,11 @@
           "type": "boolean",
           "default": false,
           "description": "Struct/union types: the codec is hand-written in codecs/npt_protocol_codec_<name>.h. The generator only forward-declares npt_sizeof_/npt_encode_/npt_decode_<name> (and, on the host, npt_replace_<name>_handle), copies the header beside its output and includes it from the structs header."
+        },
+        "pointer_sized": {
+          "type": "boolean",
+          "default": false,
+          "description": "Alias types: the C type is pointer-sized (SIZE_T, HANDLE, HWND, ...), 4 bytes on a 32-bit guest, while its wire form is the 64-bit primitive. The codec converts by value (zero- or sign-extending on encode, truncating on decode) instead of accessing the value through a primitive pointer."
         }
       },
       "additionalProperties": false

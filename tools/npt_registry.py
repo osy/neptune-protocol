@@ -260,6 +260,11 @@ class NptType:
 
     # For aliases: the target primitive name
     alias_target: Optional[str] = None
+    # For aliases: the C type is pointer-sized (SIZE_T, HANDLE, ...), so
+    # it is 4 bytes on a 32-bit guest while its wire form is the 64-bit
+    # alias_target.  Its codec converts by value instead of reading the
+    # value through an alias_target pointer.
+    pointer_sized: bool = False
 
     # For enums
     fields: list[NptField] = dataclass_field(default_factory=list)
@@ -721,6 +726,7 @@ class TypeRegistry:
 
             if cat == Category.ALIAS:
                 ntype.alias_target = prim
+                ntype.pointer_sized = bool(raw.get('pointer_sized', False))
 
             elif cat == Category.ENUM:
                 for i, f in enumerate(raw.get('fields', [])):
