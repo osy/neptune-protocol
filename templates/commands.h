@@ -271,8 +271,10 @@ ${' ' * (len('npt_dispatch_') + len(fname) + 1)}uint64_t object_id)
 
     npt_decode_${fname}_args_temp(ctx->decoder, &args);
 
-    if (npt_cs_decoder_get_fatal(ctx->decoder))
+    if (npt_cs_decoder_get_fatal(ctx->decoder)) {
+        npt_log("${fname}: malformed arguments");
         return;
+    }
 
     args._self = npt_cs_handle_lookup(ctx, object_id,
                                        NPT_OBJECT_TYPE_${iface.name.upper()});
@@ -294,6 +296,8 @@ ${GEN.register_failed_output_handles(method.params, 'args.')}
             npt_cs_decoder_reset_temp_pool(ctx->decoder);
             return;
         }
+        npt_log("${fname} on unregistered object 0x%016" PRIx64
+                " owes a reply", (uint64_t)object_id);
         npt_cs_decoder_set_fatal(ctx->decoder);
         return;
     }
@@ -312,6 +316,8 @@ ${GEN.register_failed_output_handles(method.params, 'args.')}
             npt_cs_decoder_reset_temp_pool(ctx->decoder);
             return;
         }
+        npt_log("${fname}: an argument handle is unknown to this "
+                "context and the call owes a reply");
         npt_cs_decoder_set_fatal(ctx->decoder);
         return;
     }
@@ -751,8 +757,10 @@ ${' ' * (len('npt_dispatch_') + len(fname) + 1)}uint32_t cmd_flags)
     memset(&args, 0, sizeof(args));
 
     npt_decode_${fname}_args_temp(ctx->decoder, &args);
-    if (npt_cs_decoder_get_fatal(ctx->decoder))
+    if (npt_cs_decoder_get_fatal(ctx->decoder)) {
+        npt_log("${fname}: malformed arguments");
         return;
+    }
 
     npt_replace_${fname}_args_handle(ctx, &args);
 
@@ -768,6 +776,8 @@ ${GEN.register_failed_output_handles(func.params, 'args.')}
             npt_cs_decoder_reset_temp_pool(ctx->decoder);
             return;
         }
+        npt_log("${fname}: an argument handle is unknown to this "
+                "context and the call owes a reply");
         npt_cs_decoder_set_fatal(ctx->decoder);
         return;
     }

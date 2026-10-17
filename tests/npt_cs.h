@@ -97,7 +97,9 @@ npt_com_vtable(void *obj)
 /* Logging                                                             */
 /* ------------------------------------------------------------------ */
 
-#define npt_log(...) ((void)0)
+/* Counted, not printed: tests assert that an error path logs. */
+extern int npt_test_log_count;
+#define npt_log(...) ((void)npt_test_log_count++)
 
 /* ------------------------------------------------------------------ */
 /* Encoder                                                             */

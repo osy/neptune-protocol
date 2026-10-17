@@ -15,6 +15,8 @@
 #include "npt_protocol_host.h"
 #include "npt_test_harness.h"
 
+int npt_test_log_count;
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
@@ -1730,7 +1732,63 @@ static int test_manual_dispatch_cmd_size(void)
     return result;
 }
 
+/* A command the decoder rejects is logged with the method it names, not
+ * only as a bare dispatch error.  The bytes are a 32-bit guest's
+ * CreateRootSignature whose SIZE_T length carried 4 bytes of stack
+ * garbage: a 68-byte blob claiming 0x71212c50_00000044 bytes. */
+static int test_manual_dispatch_logs_malformed(void)
+{
+    uint8_t buf[256];
+    struct npt_command_header hdr;
+    struct npt_cs_encoder enc =
+        npt_test_encoder_init(buf + sizeof(hdr), sizeof(buf) - sizeof(hdr));
+    uint8_t blob[68];
+    UINT node_mask = 1;
+    SIZE_T length = (SIZE_T)0x71212c5000000044ull;
+    IID riid;
+    uint64_t gid = 3;
+
+    memset(blob, 0x5a, sizeof(blob));
+    memset(&riid, 0x11, sizeof(riid));
+    npt_encode_UINT(&enc, &node_mask);
+    npt_encode_array_count(&enc, sizeof(blob));
+    npt_encode_blob_array(&enc, blob, sizeof(blob));
+    npt_encode_SIZE_T(&enc, &length);
+    npt_encode_simple_pointer(&enc, &riid);
+    npt_encode_IID(&enc, &riid);
+    npt_encode_uint64_t(&enc, &gid);
+
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.cmd_type = NPT_CMD_TYPE(255, NPT_IFACE_ID_ID3D12Device,
+                                NPT_METHOD_ID3D12Device_CreateRootSignature);
+    hdr.cmd_flags = NPT_CMD_FLAG_REPLY;
+    hdr.object_id = 1;
+    hdr.cmd_size = (uint32_t)(sizeof(hdr) +
+                              npt_test_encoder_written(&enc, buf + sizeof(hdr)));
+    memcpy(buf, &hdr, sizeof(hdr));
+
+    struct npt_cs_decoder dec = npt_test_decoder_init(buf, hdr.cmd_size);
+    struct npt_dispatch_context ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.decoder = &dec;
+    const int logs_before = npt_test_log_count;
+    npt_dispatch_command(&ctx);
+    int result = expect_fatal("CreateRootSignature with an oversized length",
+                              &dec, true);
+    /* One line naming the method, then the dispatcher's own. */
+    if (npt_test_log_count - logs_before < 2) {
+        fprintf(stderr, "FAIL: malformed CreateRootSignature logged %d "
+                "line(s); the method was never named\n",
+                npt_test_log_count - logs_before);
+        result = -1;
+    }
+    npt_test_cleanup(&dec);
+    return result;
+}
+
 static const struct manual_test_entry manual_tests[] = {
+    { "dispatch logs the method of a malformed command",
+      test_manual_dispatch_logs_malformed },
     { "D3D12_PIPELINE_STATE_STREAM_DESC (mesh pipeline records)",
       test_manual_D3D12_PIPELINE_STATE_STREAM_DESC_mesh },
     { "D3D12_PIPELINE_STATE_STREAM_DESC (every record type)",
