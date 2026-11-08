@@ -122,7 +122,7 @@ def _strip_type_prefix(name):
 class Field:
     __slots__ = ('name', 'type_name', 'inline_type', 'indirection', 'const',
                  'count', 'count_output', 'bitwidth', 'condition', 'value',
-                 'handle', 'input', 'output', 'optional')
+                 'handle', 'input', 'output', 'optional', 'slot_range')
 
     def __init__(self, raw, parent_name=None, index=0):
         self.name = raw.get('name')
@@ -144,6 +144,24 @@ class Field:
         self.input = raw.get('input', True)
         self.output = raw.get('output', False)
         self.optional = raw.get('optional', False)
+        self.slot_range = raw.get('slot_range')
+
+
+def _slot_starts(params):
+    """Names of the params that open a slot_range run.  The host rejects
+    a run that leaves its table, so these start at slot 0 instead of a
+    random value."""
+    return {p.slot_range['start'] for p in params
+            if p.slot_range and 'start' in p.slot_range}
+
+
+def _count_nonzero(p):
+    """The COUNT_NONZERO style's count: 5, or the slot table's size when
+    a slot_range caps it below that (D3D11's 4 stream-output slots)."""
+    if p.slot_range:
+        limit = p.slot_range['limit']
+        return f'(5u < ({limit}) ? 5u : ({limit}))'
+    return '5'
 
 
 class Method:
@@ -1645,7 +1663,7 @@ def _gen_method_param_init(out, reg, params, fields_map, prefix,
         out.write(f'        break;\n')
         out.write(f'    case NPT_STYLE_COUNT_NONZERO:\n')
         out.write(f'    default:\n')
-        out.write(f'        {deref}{prefix}{p.name} = 5;\n')
+        out.write(f'        {deref}{prefix}{p.name} = {_count_nonzero(p)};\n')
         out.write(f'        break;\n')
         out.write(f'    }}\n')
 
@@ -1815,6 +1833,14 @@ def _gen_method_param_init(out, reg, params, fields_map, prefix,
                 elif t2 and t2.category in ('struct', 'union'):
                     # Builtin or anonymous struct: fill with random data
                     out.write(f'    npt_test_fill(&{prefix}{p.name}, sizeof({p.type_name}), &seed);\n')
+                elif p.name in _slot_starts(params):
+                    out.write(f'    {prefix}{p.name} = 0;\n')
+                elif p.slot_range:
+                    # A capped count whose array is sized by an expression
+                    # (D3D12 OMSetRenderTargets): random, but inside the table.
+                    limit = p.slot_range['limit']
+                    out.write(f'    {prefix}{p.name} = ({p.type_name})'
+                              f'(npt_test_rand(&seed) % (({limit}) + 1u));\n')
                 else:
                     out.write(f'    {prefix}{p.name} = ({p.type_name})npt_test_rand(&seed);\n')
             continue
@@ -2279,7 +2305,7 @@ def _gen_guest_verify_reply(out, reg, iface, method, fname, is_toplevel, idx):
             out.write(f'    case NPT_STYLE_COUNT_ONE:\n')
             out.write(f'        {deref}p_{p.name} = 1; break;\n')
             out.write(f'    case NPT_STYLE_COUNT_NONZERO: default:\n')
-            out.write(f'        {deref}p_{p.name} = 5; break;\n')
+            out.write(f'        {deref}p_{p.name} = {_count_nonzero(p)}; break;\n')
             out.write(f'    }}\n')
 
     # Allocate storage for output params
@@ -2384,7 +2410,7 @@ def _gen_guest_verify_reply(out, reg, iface, method, fname, is_toplevel, idx):
                     out.write(f'    case NPT_STYLE_COUNT_ONE:\n')
                     out.write(f'        _alloc_cnt_{p.name} = 1; break;\n')
                     out.write(f'    case NPT_STYLE_COUNT_NONZERO: default:\n')
-                    out.write(f'        _alloc_cnt_{p.name} = 5; break;\n')
+                    out.write(f'        _alloc_cnt_{p.name} = {_count_nonzero(count_after)}; break;\n')
                     out.write(f'    }}\n')
                     out.write(f'    if (_alloc_cnt_{p.name} > 0) {{\n')
                     out.write(f'        p_{p.name} = npt_test_alloc({alloc_size});\n')
@@ -2558,7 +2584,7 @@ def _gen_method_param_init_guest(out, reg, params, fields_map, prefix):
             out.write(f'        break;\n')
             out.write(f'    case NPT_STYLE_COUNT_NONZERO:\n')
             out.write(f'    default:\n')
-            out.write(f'        {deref}{prefix}{p.name} = 5;\n')
+            out.write(f'        {deref}{prefix}{p.name} = {_count_nonzero(p)};\n')
             out.write(f'        break;\n')
             out.write(f'    }}\n')
 
@@ -2703,6 +2729,14 @@ def _gen_method_param_init_guest(out, reg, params, fields_map, prefix):
                 elif t2 and t2.category in ('struct', 'union'):
                     # Builtin or anonymous struct: fill with random data
                     out.write(f'    npt_test_fill(&{prefix}{p.name}, sizeof({p.type_name}), &seed);\n')
+                elif p.name in _slot_starts(params):
+                    out.write(f'    {prefix}{p.name} = 0;\n')
+                elif p.slot_range:
+                    # A capped count whose array is sized by an expression
+                    # (D3D12 OMSetRenderTargets): random, but inside the table.
+                    limit = p.slot_range['limit']
+                    out.write(f'    {prefix}{p.name} = ({p.type_name})'
+                              f'(npt_test_rand(&seed) % (({limit}) + 1u));\n')
                 else:
                     out.write(f'    {prefix}{p.name} = ({p.type_name})npt_test_rand(&seed);\n')
             continue

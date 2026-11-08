@@ -133,6 +133,17 @@
           "default": false,
           "description": "Only valid on a pointer-sized scalar field (SIZE_T). The value is an address in the host process, such as a D3D12 CPU descriptor handle, which a 32-bit guest cannot hold. The guest codec converts it with the consumer's npt_guest_host_address_to_wire / npt_guest_host_address_from_wire (uint64_t -> uint64_t); the wire carries the host's 64-bit value and the host codec is unchanged."
         },
+        "slot_range": {
+          "type": "object",
+          "description": "Only valid on a by-value input count parameter of a method or function. The count, with the optional 'start' parameter, selects the run of slots [start, start + count) in a table whose size the API fixes (D3D11's 14 constant-buffer slots, D3D12's 32 vertex-buffer slots). Without 'start' it may also sit on an index that must not exceed 'limit' (a D3D12 root parameter index). The host decoder sets the call fatal when the run leaves the table (summed in 64 bits, so it cannot wrap), unless the count equals 'keep'. The wire is unchanged.",
+          "properties": {
+            "limit": {"type": ["string", "integer"], "description": "Number of slots in the table: a C constant or a literal."},
+            "start": {"type": "string", "description": "Sibling parameter holding the first slot. Absent: the run starts at slot 0."},
+            "keep": {"type": ["string", "integer"], "description": "Count value that selects no slots and leaves the bindings alone (D3D11_KEEP_UNORDERED_ACCESS_VIEWS)."}
+          },
+          "required": ["limit"],
+          "additionalProperties": false
+        },
         "storage_member": {
           "type": "string",
           "description": "Only valid on an anonymous union field the overlay lays over a single member the vendor headers declare (e.g. D3D12_STATE_SUBOBJECT's 'const void *pDesc'). Names that member, which must also appear as one of the union's arms. Generated code reaches every arm by reinterpreting the member's storage, so it compiles against the vendor headers (which declare only the member) and against the protocol's own definitions alike."

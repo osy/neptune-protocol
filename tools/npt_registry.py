@@ -104,6 +104,15 @@ class NptField:
     # npt_guest_host_address_{to,from}_wire, which a 32-bit guest needs to
     # hold it at all.
     host_address: bool = False
+    # A count parameter that, with an optional start parameter, selects a
+    # run of slots in a table the API fixes in size (D3D11's 14 constant
+    # buffer slots, D3D12's 32 vertex buffer slots):
+    # {'limit': <C constant>, 'start': <sibling param>, 'keep': <C constant>}.
+    # The host decoder rejects a run that leaves the table, unless the
+    # count equals 'keep' (a sentinel meaning "leave the bindings alone").
+    # With no 'start', a param that is an index rather than a count is
+    # bounded the same way: it must not exceed 'limit'.
+    slot_range: Optional[dict] = None
     value: Optional[int] = None  # for enum fields
     handle: Optional[str] = None  # 'com', 'win32', or None
     input: bool = True
@@ -505,6 +514,7 @@ def _parse_field(raw, parent_name=None, index=0):
         condition=raw.get('condition'),
         storage_member=raw.get('storage_member'),
         host_address=bool(raw.get('host_address', False)),
+        slot_range=raw.get('slot_range'),
         value=raw.get('value'),
         handle=raw.get('handle'),
         input=raw.get('input', True),
@@ -917,10 +927,48 @@ class TypeRegistry:
                 check_field(field, ctx)
             for param in ntype.params:
                 check_field(param, ctx)
+            for field in ntype.fields:
+                if field.slot_range:
+                    raise ValueError(
+                        f"slot_range on struct field '{field.name}' in "
+                        f"{ctx}; only a method or function parameter "
+                        f"can carry one")
             for method in ntype.methods:
                 mctx = f'{ctx}.{method.name}'
                 for param in method.params:
                     check_field(param, mctx)
+                self._validate_slot_ranges(method.params, mctx)
+            self._validate_slot_ranges(ntype.params, ctx)
+
+    def _validate_slot_ranges(self, params, context):
+        """A slot_range sits on a by-value input scalar, names a 'limit',
+        and its 'start', when given, is another by-value input scalar of
+        the same call."""
+        by_name = {p.name: p for p in params}
+        for param in params:
+            sr = param.slot_range
+            if not sr:
+                continue
+            where = f"slot_range on '{param.name}' in {context}"
+            unknown = set(sr) - {'limit', 'start', 'keep'}
+            if unknown:
+                raise ValueError(f"{where}: unknown keys {sorted(unknown)}")
+            if 'limit' not in sr:
+                raise ValueError(f"{where}: needs a 'limit'")
+            for name in [param.name] + ([sr['start']] if 'start' in sr else []):
+                p = by_name.get(name)
+                if p is None:
+                    raise ValueError(f"{where}: no parameter '{name}'")
+                if p.indirection or p.output or not p.input:
+                    raise ValueError(
+                        f"{where}: '{name}' must be a by-value input")
+                # An overlay param whose name matches nothing is appended,
+                # not merged, and arrives with no type: catch the typo
+                # here instead of shipping a phantom wire field.
+                if p.type_name not in ('UINT', 'UINT32'):
+                    raise ValueError(
+                        f"{where}: '{name}' has type '{p.type_name}', not "
+                        f"UINT; a misspelt overlay name adds a phantom param")
 
     def _validate_wire_methods(self):
         """Check what the cmd_type layout and the transport can express:

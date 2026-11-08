@@ -385,13 +385,73 @@
       "methods": [
         {"name": "Map",                "skip_default": true},
         {"name": "Unmap",              "skip_default": true},
-        {"name": "UpdateSubresource",  "skip_default": true}
+        {"name": "UpdateSubresource",  "skip_default": true},
+        {"name": "VSSetConstantBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "VSSetShaderResources", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "VSSetSamplers", "params": [{"name": "NumSamplers", "slot_range": {"limit": "D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "VSGetConstantBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "VSGetShaderResources", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "VSGetSamplers", "params": [{"name": "NumSamplers", "slot_range": {"limit": "D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "PSSetConstantBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "PSSetShaderResources", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "PSSetSamplers", "params": [{"name": "NumSamplers", "slot_range": {"limit": "D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "PSGetConstantBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "PSGetShaderResources", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "PSGetSamplers", "params": [{"name": "NumSamplers", "slot_range": {"limit": "D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "GSSetConstantBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "GSSetShaderResources", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "GSSetSamplers", "params": [{"name": "NumSamplers", "slot_range": {"limit": "D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "GSGetConstantBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "GSGetShaderResources", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "GSGetSamplers", "params": [{"name": "NumSamplers", "slot_range": {"limit": "D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "HSSetConstantBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "HSSetShaderResources", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "HSSetSamplers", "params": [{"name": "NumSamplers", "slot_range": {"limit": "D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "HSGetConstantBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "HSGetShaderResources", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "HSGetSamplers", "params": [{"name": "NumSamplers", "slot_range": {"limit": "D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "DSSetConstantBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "DSSetShaderResources", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "DSSetSamplers", "params": [{"name": "NumSamplers", "slot_range": {"limit": "D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "DSGetConstantBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "DSGetShaderResources", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "DSGetSamplers", "params": [{"name": "NumSamplers", "slot_range": {"limit": "D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "CSSetConstantBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "CSSetShaderResources", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "CSSetSamplers", "params": [{"name": "NumSamplers", "slot_range": {"limit": "D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "CSGetConstantBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "CSGetShaderResources", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "CSGetSamplers", "params": [{"name": "NumSamplers", "slot_range": {"limit": "D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "IASetVertexBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "CSSetUnorderedAccessViews", "params": [{"name": "NumUAVs", "slot_range": {"limit": "D3D11_1_UAV_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "OMSetRenderTargets", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT"}}]},
+        {"name": "SOSetTargets", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_SO_BUFFER_SLOT_COUNT"}}]},
+        {"name": "IAGetVertexBuffers", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "CSGetUnorderedAccessViews", "params": [{"name": "NumUAVs", "slot_range": {"limit": "D3D11_1_UAV_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "OMGetRenderTargets", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT"}}]},
+        {"name": "SOGetTargets", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_SO_BUFFER_SLOT_COUNT"}}]},
+        {"name": "OMSetRenderTargetsAndUnorderedAccessViews", "params": [{"name": "NumRTVs", "slot_range": {"limit": "D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT", "keep": "D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL"}}, {"name": "NumUAVs", "slot_range": {"limit": "D3D11_1_UAV_SLOT_COUNT", "start": "UAVStartSlot", "keep": "D3D11_KEEP_UNORDERED_ACCESS_VIEWS"}}]},
+        {"name": "OMGetRenderTargetsAndUnorderedAccessViews", "params": [{"name": "NumRTVs", "slot_range": {"limit": "D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT"}}, {"name": "NumUAVs", "slot_range": {"limit": "D3D11_1_UAV_SLOT_COUNT", "start": "UAVStartSlot"}}]},
+        {"name": "RSSetViewports", "params": [{"name": "NumViewports", "slot_range": {"limit": "D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE"}}]},
+        {"name": "RSSetScissorRects", "params": [{"name": "NumRects", "slot_range": {"limit": "D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE"}}]}
       ]
     },
     {
       "name": "ID3D11DeviceContext1",
       "methods": [
-        {"name": "UpdateSubresource1", "skip_default": true}
+        {"name": "UpdateSubresource1", "skip_default": true},
+        {"name": "VSSetConstantBuffers1", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "VSGetConstantBuffers1", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "HSSetConstantBuffers1", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "HSGetConstantBuffers1", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "DSSetConstantBuffers1", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "DSGetConstantBuffers1", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "GSSetConstantBuffers1", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "GSGetConstantBuffers1", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "PSSetConstantBuffers1", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "PSGetConstantBuffers1", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "CSSetConstantBuffers1", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "CSGetConstantBuffers1", "params": [{"name": "NumBuffers", "slot_range": {"limit": "D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT", "start": "StartSlot"}}]}
       ]
     },
     {
@@ -525,9 +585,28 @@
       "staged_methods": true,
       "methods": [
         {"name": "Close", "force_sync": true},
+        {"name": "SetComputeRoot32BitConstants", "params": [{"name": "RootParameterIndex", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}, {"name": "Num32BitValuesToSet", "slot_range": {"limit": "D3D12_MAX_ROOT_COST", "start": "DestOffsetIn32BitValues"}}]},
+        {"name": "SetComputeRoot32BitConstant", "params": [{"name": "RootParameterIndex", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}, {"name": "DestOffsetIn32BitValues", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}]},
+        {"name": "SetComputeRootDescriptorTable", "params": [{"name": "RootParameterIndex", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}]},
+        {"name": "SetComputeRootConstantBufferView", "params": [{"name": "RootParameterIndex", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}]},
+        {"name": "SetComputeRootShaderResourceView", "params": [{"name": "RootParameterIndex", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}]},
+        {"name": "SetComputeRootUnorderedAccessView", "params": [{"name": "RootParameterIndex", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}]},
+        {"name": "SetGraphicsRoot32BitConstants", "params": [{"name": "RootParameterIndex", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}, {"name": "Num32BitValuesToSet", "slot_range": {"limit": "D3D12_MAX_ROOT_COST", "start": "DestOffsetIn32BitValues"}}]},
+        {"name": "SetGraphicsRoot32BitConstant", "params": [{"name": "RootParameterIndex", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}, {"name": "DestOffsetIn32BitValues", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}]},
+        {"name": "SetGraphicsRootDescriptorTable", "params": [{"name": "RootParameterIndex", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}]},
+        {"name": "SetGraphicsRootConstantBufferView", "params": [{"name": "RootParameterIndex", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}]},
+        {"name": "SetGraphicsRootShaderResourceView", "params": [{"name": "RootParameterIndex", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}]},
+        {"name": "SetGraphicsRootUnorderedAccessView", "params": [{"name": "RootParameterIndex", "slot_range": {"limit": "D3D12_MAX_ROOT_COST - 1"}}]},
+        {"name": "SetDescriptorHeaps", "params": [{"name": "NumDescriptorHeaps", "slot_range": {"limit": 2}}]},
+        {"name": "IASetVertexBuffers", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "SOSetTargets", "params": [{"name": "NumViews", "slot_range": {"limit": "D3D12_SO_BUFFER_SLOT_COUNT", "start": "StartSlot"}}]},
+        {"name": "RSSetViewports", "params": [{"name": "NumViewports", "slot_range": {"limit": "D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE"}}]},
+        {"name": "RSSetScissorRects", "params": [{"name": "NumRects", "slot_range": {"limit": "D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE"}}]},
         {
           "name": "OMSetRenderTargets",
           "params": [
+            {"name": "NumRenderTargetDescriptors",
+             "slot_range": {"limit": "D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT"}},
             {
               "name": "pRenderTargetDescriptors",
               "index": 1,
@@ -537,10 +616,25 @@
         }
       ]
     },
-    {"name": "ID3D12GraphicsCommandList1", "staged_methods": true},
+    {
+      "name": "ID3D12GraphicsCommandList1",
+      "staged_methods": true,
+      "methods": [
+        {"name": "SetSamplePositions", "params": [
+          {"name": "NumSamplesPerPixel", "slot_range": {"limit": 16}},
+          {"name": "NumPixels", "slot_range": {"limit": 4}}
+        ]}
+      ]
+    },
     {"name": "ID3D12GraphicsCommandList2", "staged_methods": true},
     {"name": "ID3D12GraphicsCommandList3", "staged_methods": true},
-    {"name": "ID3D12GraphicsCommandList4", "staged_methods": true},
+    {
+      "name": "ID3D12GraphicsCommandList4",
+      "staged_methods": true,
+      "methods": [
+        {"name": "BeginRenderPass", "params": [{"name": "NumRenderTargets", "slot_range": {"limit": "D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT"}}]}
+      ]
+    },
     {"name": "ID3D12GraphicsCommandList5", "staged_methods": true},
     {"name": "ID3D12GraphicsCommandList6", "staged_methods": true},
     {"name": "ID3D12GraphicsCommandList7", "staged_methods": true},

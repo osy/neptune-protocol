@@ -1685,6 +1685,119 @@ static int test_manual_bounds_output_handles(void)
     return result;
 }
 
+/* Decode PSSetConstantBuffers1(start, num) with num buffer handles and
+ * no constant ranges; return whether the decoder went fatal. */
+static bool decode_ps_cb1(UINT start, UINT num)
+{
+    uint8_t buf[128];
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    npt_encode_UINT(&enc, &start);
+    npt_encode_UINT(&enc, &num);
+    npt_encode_array_count(&enc, num);
+    for (UINT i = 0; i < num; i++)
+        npt_encode_com_handle(&enc, 0);
+    npt_encode_array_count(&enc, 0); /* pFirstConstant absent */
+    npt_encode_array_count(&enc, 0); /* pNumConstants absent */
+    struct npt_cs_decoder dec =
+        npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+    struct npt_command_ID3D11DeviceContext1_PSSetConstantBuffers1 args = {0};
+    npt_decode_ID3D11DeviceContext1_PSSetConstantBuffers1_args_temp(&dec, &args);
+    bool fatal = dec.fatal;
+    npt_test_cleanup(&dec);
+    return fatal;
+}
+
+/* Decode OMSetRenderTargetsAndUnorderedAccessViews with no views; return
+ * whether the decoder went fatal. */
+static bool decode_om_rt_uav(UINT num_rtvs, UINT uav_start, UINT num_uavs)
+{
+    uint8_t buf[128];
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    npt_encode_UINT(&enc, &num_rtvs);
+    npt_encode_array_count(&enc, 0);  /* ppRenderTargetViews absent */
+    npt_encode_com_handle(&enc, 0);   /* pDepthStencilView */
+    npt_encode_UINT(&enc, &uav_start);
+    npt_encode_UINT(&enc, &num_uavs);
+    npt_encode_array_count(&enc, 0);  /* ppUnorderedAccessViews absent */
+    npt_encode_array_count(&enc, 0);  /* pUAVInitialCounts absent */
+    struct npt_cs_decoder dec =
+        npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+    struct npt_command_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews
+        args = {0};
+    npt_decode_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews_args_temp(
+        &dec, &args);
+    bool fatal = dec.fatal;
+    npt_test_cleanup(&dec);
+    return fatal;
+}
+
+static int expect(const char *name, bool fatal, bool want)
+{
+    if (fatal == want)
+        return 0;
+    fprintf(stderr, "FAIL: %s: decode %s fatal\n", name,
+            want ? "did not go" : "went");
+    return -1;
+}
+
+/* A binding run must stay inside the API's slot table: D3D11 has 14
+ * constant-buffer slots and 64 UAV slots.  The end is summed in 64 bits,
+ * so a StartSlot near UINT_MAX cannot wrap back into range, and a KEEP
+ * count selects no slots at all. */
+static int test_manual_bounds_slot_range(void)
+{
+    int result = 0;
+    result |= expect("CB1 slots 0..13", decode_ps_cb1(0, 14), false);
+    result |= expect("CB1 slot 13", decode_ps_cb1(13, 1), false);
+    result |= expect("CB1 empty run at slot 14", decode_ps_cb1(14, 0), false);
+    result |= expect("CB1 slot 14", decode_ps_cb1(14, 1), true);
+    result |= expect("CB1 slots 10..14", decode_ps_cb1(10, 5), true);
+    result |= expect("CB1 StartSlot wraps", decode_ps_cb1(0xFFFFFFFFu, 2), true);
+    result |= expect("OM 8 RTVs, UAVs 8..63", decode_om_rt_uav(8, 8, 56), false);
+    result |= expect("OM 9 RTVs", decode_om_rt_uav(9, 0, 0), true);
+    result |= expect("OM UAVs 60..64", decode_om_rt_uav(0, 60, 5), true);
+    result |= expect("OM UAV start wraps",
+                     decode_om_rt_uav(0, 0xFFFFFFF0u, 0x20), true);
+    result |= expect("OM keep RTVs and UAVs",
+                     decode_om_rt_uav(D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL,
+                                      0xFFFFFFFFu,
+                                      D3D11_KEEP_UNORDERED_ACCESS_VIEWS), false);
+    return result;
+}
+
+/* Root constants live in a 64-DWORD root signature: a destination run
+ * past it, or a root parameter index past it, is rejected. */
+static bool decode_root_constants(UINT index, UINT num, UINT offset)
+{
+    uint8_t buf[512];
+    uint8_t data[256] = {0};
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    npt_encode_UINT(&enc, &index);
+    npt_encode_UINT(&enc, &num);
+    npt_encode_array_count(&enc, num * 4u);
+    npt_encode_blob_array(&enc, data, num * 4u);
+    npt_encode_UINT(&enc, &offset);
+    struct npt_cs_decoder dec =
+        npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+    struct npt_command_ID3D12GraphicsCommandList_SetGraphicsRoot32BitConstants args = {0};
+    npt_decode_ID3D12GraphicsCommandList_SetGraphicsRoot32BitConstants_args_temp(&dec, &args);
+    bool fatal = dec.fatal;
+    npt_test_cleanup(&dec);
+    return fatal;
+}
+
+static int test_manual_bounds_root_constants(void)
+{
+    int result = 0;
+    result |= expect("root constants 60..63", decode_root_constants(0, 4, 60), false);
+    result |= expect("root constants 61..64", decode_root_constants(0, 4, 61), true);
+    result |= expect("root constants offset wraps",
+                     decode_root_constants(0, 1, 0xFFFFFFFFu), true);
+    result |= expect("root parameter 63", decode_root_constants(63, 1, 0), false);
+    result |= expect("root parameter 64", decode_root_constants(64, 1, 0), true);
+    return result;
+}
+
 /* Append a reply-less Draw whose header claims `tail` bytes more than
  * its parameters take. */
 static size_t put_draw(uint8_t *buf, size_t tail)
@@ -1842,6 +1955,8 @@ static const struct manual_test_entry manual_tests[] = {
     { "bounds: blob param", test_manual_bounds_blob_param },
     { "bounds: struct counted field", test_manual_bounds_struct_field },
     { "bounds: output COM handle array", test_manual_bounds_output_handles },
+    { "bounds: binding run inside the slot table", test_manual_bounds_slot_range },
+    { "bounds: root constants inside the root signature", test_manual_bounds_root_constants },
     { "dispatch honours cmd_size", test_manual_dispatch_cmd_size },
     { "dispatch ID3D12Resource::Map",
       test_manual_dispatch_Map },

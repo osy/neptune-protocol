@@ -154,6 +154,38 @@ class Gen:
         self._counted_arrays = []
         return '\n'.join(lines)
 
+    def slot_range_checks(self, params, prefix: str,
+                          indent: int = 1) -> str:
+        """Reject a binding run that leaves the slot table the API fixes.
+
+        A call such as PSSetConstantBuffers names a run of slots,
+        [StartSlot, StartSlot + NumBuffers), in a table of a size the API
+        fixes.  The D3D runtime refuses a run that leaves the table; the
+        decoder applies the same limit before the call reaches the backend.
+        The sum is taken in 64 bits: a 32-bit one wraps, and StartSlot
+        0xFFFFFFFF with NumBuffers 2 would pass.  A count equal to the
+        'keep' sentinel leaves the bindings alone and selects no slots."""
+        ind = '    ' * indent
+        lines = []
+        for p in params:
+            sr = p.slot_range
+            if not sr:
+                continue
+            run = f'(uint64_t){prefix}{p.name}'
+            if 'start' in sr:
+                run = f'(uint64_t){prefix}{sr["start"]} + {run}'
+            cond = f'{run} > (uint64_t)({sr["limit"]})'
+            if 'keep' in sr:
+                cond = f'{prefix}{p.name} != ({sr["keep"]}) &&\n{ind}    {cond}'
+            lines += [f'{ind}if ({cond}) {{',
+                      f'{ind}    npt_cs_decoder_set_fatal(dec);',
+                      f'{ind}    return;',
+                      f'{ind}}}']
+        if not lines:
+            return ''
+        return '\n'.join([f'{ind}/* A binding run must stay inside the slot'
+                          f' table the API fixes. */'] + lines)
+
     def set_context(self, ctx: str):
         """Set the current context (struct/method name) for warning messages."""
         self._context = ctx

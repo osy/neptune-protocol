@@ -184,6 +184,7 @@ ${' ' * (len('npt_decode_') + len(fname) + len('_args_temp') + 1)}struct npt_com
                              for p in method.params)
     _count_decls = GEN.counted_array_decls()
     _count_checks = GEN.counted_array_checks()
+    _slot_checks = GEN.slot_range_checks(method.params, 'args->')
 %>\
 % if _count_decls:
 ${_count_decls}
@@ -192,6 +193,9 @@ ${_count_decls}
 ${_decode_body}
 % if _count_checks:
 ${_count_checks}
+% endif
+% if _slot_checks:
+${_slot_checks}
 % endif
     /* Allocate temp storage for output-only parameters */
 % for p in method.params:
@@ -682,6 +686,7 @@ ${' ' * (len('npt_decode_') + len(fname) + len('_args_temp') + 1)}struct npt_com
                              for p in func.params)
     _count_decls = GEN.counted_array_decls()
     _count_checks = GEN.counted_array_checks()
+    _slot_checks = GEN.slot_range_checks(func.params, 'args->')
 %>\
 % if _count_decls:
 ${_count_decls}
@@ -690,6 +695,9 @@ ${_count_decls}
 ${_decode_body}
 % if _count_checks:
 ${_count_checks}
+% endif
+% if _slot_checks:
+${_slot_checks}
 % endif
     /* Allocate temp storage for output-only parameters */
 % for p in func.params:
