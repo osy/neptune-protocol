@@ -1765,6 +1765,109 @@ static int test_manual_bounds_slot_range(void)
     return result;
 }
 
+/* A reply carries no more of an output array than the host allocated for
+ * it, even when the callee rewrites the count past that: GetPrivateData
+ * reports the size of the data it holds through *pDataSize. */
+static int test_manual_bounds_reply_capacity(void)
+{
+    uint8_t data[4] = { 1, 2, 3, 4 };
+    UINT size = 12; /* the callee's answer; 4 bytes were allocated */
+    struct npt_command_ID3D11DeviceChild_GetPrivateData args = {0};
+    args.pDataSize = &size;
+    args.pData = data;
+    args._cap_pData = sizeof(data);
+
+    uint8_t buf[128];
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    npt_encode_ID3D11DeviceChild_GetPrivateData_reply(&enc, &args);
+    struct npt_cs_decoder dec =
+        npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+    struct npt_reply_header hdr;
+    npt_cs_decoder_read(&dec, sizeof(hdr), &hdr, sizeof(hdr));
+    UINT wire_size = 0;
+    if (npt_decode_simple_pointer(&dec))
+        npt_decode_UINT(&dec, &wire_size);
+    uint64_t wire_count = npt_decode_array_count_unchecked(&dec);
+    npt_test_cleanup(&dec);
+
+    int result = 0;
+    if (wire_size != 12) {
+        fprintf(stderr, "FAIL: GetPrivateData reply size %u, want 12\n",
+                wire_size);
+        result = -1;
+    }
+    if (wire_count != sizeof(data)) {
+        fprintf(stderr, "FAIL: GetPrivateData reply carries %llu bytes of a "
+                "%zu-byte allocation\n", (unsigned long long)wire_count,
+                sizeof(data));
+        result = -1;
+    }
+    return result;
+}
+
+/* A D3D11_SUBRESOURCE_DATA array cannot cross the wire (pSysMem is a
+ * guest pointer), so a present one is rejected rather than handed to the
+ * callee half-decoded -- including a present but empty one, which decodes
+ * no element.  MipLevels = 0 (a full chain) must not change that. */
+static int test_manual_bounds_initial_data(void)
+{
+    int result = 0;
+    /* 0: absent, 1: one element, 2: present but empty */
+    for (int present = 0; present < 3; present++) {
+        D3D11_TEXTURE2D_DESC desc;
+        memset(&desc, 0, sizeof(desc));
+        desc.Width = desc.Height = 256;
+        desc.MipLevels = 0;
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+
+        uint8_t buf[256];
+        struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+        npt_encode_simple_pointer(&enc, &desc);
+        npt_encode_D3D11_TEXTURE2D_DESC(&enc, &desc);
+        npt_encode_array_count(&enc, present == 2 ? NPT_COUNTED_POINTER_PRESENT_ZERO
+                                     : (uint64_t)present);
+        uint64_t gid = 11;
+        npt_encode_uint64_t(&enc, &gid);
+        struct npt_cs_decoder dec =
+            npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+        struct npt_command_ID3D11Device_CreateTexture2D args = {0};
+        npt_decode_ID3D11Device_CreateTexture2D_args_temp(&dec, &args);
+        static const char *const names[] = {
+            "CreateTexture2D without initial data",
+            "CreateTexture2D with initial data",
+            "CreateTexture2D with empty initial data",
+        };
+        result |= expect_fatal(names[present], &dec, present != 0);
+        npt_test_cleanup(&dec);
+    }
+    return result;
+}
+
+/* A count product saturates instead of wrapping, even with a 64-bit term:
+ * 2 records of stride 2^63 must not read as 0 bytes. */
+static int test_manual_bounds_product_saturates(void)
+{
+    uint8_t buf[64];
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    UINT entry = 0, records = 2;
+    UINT64 stride = 1ull << 63;
+    npt_encode_UINT(&enc, &entry);
+    npt_encode_UINT(&enc, &records);
+    npt_encode_array_count(&enc, 0); /* pRecords absent */
+    npt_encode_UINT64(&enc, &stride);
+    struct npt_cs_decoder dec =
+        npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+    D3D12_NODE_CPU_INPUT in;
+    memset(&in, 0, sizeof(in));
+    npt_decode_D3D12_NODE_CPU_INPUT(&dec, &in);
+    int result = expect_fatal("NODE_CPU_INPUT 2 x 2^63 bytes, no records",
+                              &dec, true);
+    npt_test_cleanup(&dec);
+    return result;
+}
+
 /* Root constants live in a 64-DWORD root signature: a destination run
  * past it, or a root parameter index past it, is rejected. */
 static bool decode_root_constants(UINT index, UINT num, UINT offset)
@@ -1795,6 +1898,101 @@ static int test_manual_bounds_root_constants(void)
                      decode_root_constants(0, 1, 0xFFFFFFFFu), true);
     result |= expect("root parameter 63", decode_root_constants(63, 1, 0), false);
     result |= expect("root parameter 64", decode_root_constants(64, 1, 0), true);
+    return result;
+}
+
+/* D3D11 places the UAVs after the render targets: a non-empty UAV run
+ * starting below NumRTVs is rejected, unless the render targets are kept
+ * or no UAVs are bound. */
+static int test_manual_bounds_uav_after_rtvs(void)
+{
+    int result = 0;
+    result |= expect("OM UAVs from slot 2 after 2 RTVs", decode_om_rt_uav(2, 2, 1), false);
+    result |= expect("OM UAVs from slot 1 after 2 RTVs", decode_om_rt_uav(2, 1, 1), true);
+    result |= expect("OM no UAVs at slot 0 after 2 RTVs", decode_om_rt_uav(2, 0, 0), false);
+    result |= expect("OM UAVs from slot 0, RTVs kept",
+                     decode_om_rt_uav(D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL, 0, 1),
+                     false);
+    return result;
+}
+
+/* A failed call carries no output data, so the guest leaves the caller's
+ * buffer alone (GetPrivateData answers DXGI_ERROR_MORE_DATA with the size
+ * it needs and no data). */
+static int test_manual_bounds_reply_failed(void)
+{
+    uint8_t data[4] = { 1, 2, 3, 4 };
+    UINT size = 12;
+    struct npt_command_ID3D11DeviceChild_GetPrivateData args = {0};
+    args.pDataSize = &size;
+    args.pData = data;
+    args._cap_pData = sizeof(data);
+    args.ret = (HRESULT)0x887A0003; /* DXGI_ERROR_MORE_DATA */
+
+    uint8_t buf[128];
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    npt_encode_ID3D11DeviceChild_GetPrivateData_reply(&enc, &args);
+    struct npt_cs_decoder dec =
+        npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+    struct npt_reply_header hdr;
+    npt_cs_decoder_read(&dec, sizeof(hdr), &hdr, sizeof(hdr));
+    UINT wire_size = 0;
+    if (npt_decode_simple_pointer(&dec))
+        npt_decode_UINT(&dec, &wire_size);
+    uint64_t wire_count = npt_decode_array_count_unchecked(&dec);
+    npt_test_cleanup(&dec);
+    if (wire_size == 12 && wire_count == 0)
+        return 0;
+    fprintf(stderr, "FAIL: failed GetPrivateData reply: size %u count %llu, "
+            "want 12 and 0\n", wire_size, (unsigned long long)wire_count);
+    return -1;
+}
+
+/* A present but empty array reaches the callee as a non-NULL pointer; the
+ * slot behind it is zeroed, not whatever the pool held. */
+static int test_manual_bounds_empty_placeholder(void)
+{
+    uint8_t buf[128];
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    UINT start = 0, num = 0;
+    npt_encode_UINT(&enc, &start);
+    npt_encode_UINT(&enc, &num);
+    npt_encode_array_count(&enc, 0);                                /* ppConstantBuffers */
+    npt_encode_array_count(&enc, NPT_COUNTED_POINTER_PRESENT_ZERO); /* pFirstConstant */
+    npt_encode_array_count(&enc, 0);                                /* pNumConstants */
+    struct npt_cs_decoder dec =
+        npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+    struct npt_command_ID3D11DeviceContext1_PSSetConstantBuffers1 args = {0};
+    npt_decode_ID3D11DeviceContext1_PSSetConstantBuffers1_args_temp(&dec, &args);
+    int result = expect_fatal("PSSetConstantBuffers1 empty pFirstConstant", &dec, false);
+    if (!args.pFirstConstant || args.pFirstConstant[0] != 0) {
+        fprintf(stderr, "FAIL: empty pFirstConstant placeholder %s 0x%x\n",
+                args.pFirstConstant ? "holds" : "is NULL,",
+                args.pFirstConstant ? args.pFirstConstant[0] : 0u);
+        result = -1;
+    }
+    npt_test_cleanup(&dec);
+    return result;
+}
+
+/* An output buffer of a size the wire does not describe cannot be backed,
+ * so ReadFromSubresource is rejected rather than run into a placeholder. */
+static int test_manual_bounds_unsized_output(void)
+{
+    uint8_t buf[64];
+    struct npt_cs_encoder enc = npt_test_encoder_init(buf, sizeof(buf));
+    UINT pitch = 1024, depth_pitch = 1024 * 1024, sub = 0;
+    npt_encode_UINT(&enc, &pitch);
+    npt_encode_UINT(&enc, &depth_pitch);
+    npt_encode_com_handle(&enc, 0);
+    npt_encode_UINT(&enc, &sub);
+    npt_encode_simple_pointer(&enc, NULL);
+    struct npt_cs_decoder dec =
+        npt_test_decoder_init(buf, npt_test_encoder_written(&enc, buf));
+    struct npt_command_ID3D11Device3_ReadFromSubresource args = {0};
+    npt_decode_ID3D11Device3_ReadFromSubresource_args_temp(&dec, &args);
+    int result = expect_fatal("ReadFromSubresource unsized pDstData", &dec, true);
+    npt_test_cleanup(&dec);
     return result;
 }
 
@@ -1956,7 +2154,14 @@ static const struct manual_test_entry manual_tests[] = {
     { "bounds: struct counted field", test_manual_bounds_struct_field },
     { "bounds: output COM handle array", test_manual_bounds_output_handles },
     { "bounds: binding run inside the slot table", test_manual_bounds_slot_range },
+    { "bounds: reply output within its allocation", test_manual_bounds_reply_capacity },
+    { "bounds: inline initial data rejected", test_manual_bounds_initial_data },
+    { "bounds: unsized output buffer rejected", test_manual_bounds_unsized_output },
+    { "bounds: count product saturates", test_manual_bounds_product_saturates },
     { "bounds: root constants inside the root signature", test_manual_bounds_root_constants },
+    { "bounds: UAVs after the render targets", test_manual_bounds_uav_after_rtvs },
+    { "bounds: failed reply carries no output", test_manual_bounds_reply_failed },
+    { "bounds: empty array placeholder zeroed", test_manual_bounds_empty_placeholder },
     { "dispatch honours cmd_size", test_manual_dispatch_cmd_size },
     { "dispatch ID3D12Resource::Map",
       test_manual_dispatch_Map },

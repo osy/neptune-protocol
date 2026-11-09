@@ -139,7 +139,9 @@
           "properties": {
             "limit": {"type": ["string", "integer"], "description": "Number of slots in the table: a C constant or a literal."},
             "start": {"type": "string", "description": "Sibling parameter holding the first slot. Absent: the run starts at slot 0."},
-            "keep": {"type": ["string", "integer"], "description": "Count value that selects no slots and leaves the bindings alone (D3D11_KEEP_UNORDERED_ACCESS_VIEWS)."}
+            "keep": {"type": ["string", "integer"], "description": "Count value that selects no slots and leaves the bindings alone (D3D11_KEEP_UNORDERED_ACCESS_VIEWS)."},
+            "after": {"type": "string", "description": "Sibling parameter the run must not start below while it is non-empty (OMSetRenderTargetsAndUnorderedAccessViews: UAVStartSlot >= NumRTVs). Needs 'start'."},
+            "after_keep": {"type": ["string", "integer"], "description": "Value of 'after' that disables that rule (D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL)."}
           },
           "required": ["limit"],
           "additionalProperties": false

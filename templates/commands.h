@@ -74,6 +74,11 @@ struct npt_command_${fname} {
     uint64_t *_guest_ids_${p.name};
     uint32_t _guest_id_count_${p.name};
 % endif
+% if GEN.has_output_capacity(p):
+    /* Elements allocated for ${p.name} at decode; the reply never
+     * encodes more, whatever count the callee wrote back. */
+    uint64_t _cap_${p.name};
+% endif
 % if _canonical and GEN.is_output_com_handle_single(p):
     struct npt_wire_object_ref _ref_${p.name};
 % elif _canonical and GEN.is_output_com_handle_array(p):
@@ -180,11 +185,9 @@ ${' ' * (len('npt_decode_') + len(fname) + len('_args_temp') + 1)}struct npt_com
 {
 <%
     GEN.begin_decode()
-    _decode_body = '\n'.join(GEN.decode_input_param(p, 'args->', canonical=_canonical)
-                             for p in method.params)
+    _decode_body = GEN.decode_input_params(method.params, 'args->', canonical=_canonical)
     _count_decls = GEN.counted_array_decls()
     _count_checks = GEN.counted_array_checks()
-    _slot_checks = GEN.slot_range_checks(method.params, 'args->')
 %>\
 % if _count_decls:
 ${_count_decls}
@@ -193,9 +196,6 @@ ${_count_decls}
 ${_decode_body}
 % if _count_checks:
 ${_count_checks}
-% endif
-% if _slot_checks:
-${_slot_checks}
 % endif
     /* Allocate temp storage for output-only parameters */
 % for p in method.params:
@@ -252,7 +252,7 @@ ${' ' * (len('npt_encode_') + len(fname) + len('_reply') + 1)}const struct npt_c
         npt_encode_array_count(enc, 0);
     }
 % else:
-${GEN.encode_output_param(p, 'args->', canonical=_canonical)}
+${GEN.encode_output_param(p, 'args->', canonical=_canonical, failed=('(HRESULT)args->ret < 0' if method.return_type == 'HRESULT' else None))}
 % endif
 % endfor
 % endif
@@ -585,6 +585,11 @@ struct npt_command_${fname} {
     ${GEN.c_type(p)} ${p.name};
 % endfor
 % for p in func.params:
+% if GEN.has_output_capacity(p):
+    /* Elements allocated for ${p.name} at decode; the reply never
+     * encodes more, whatever count the callee wrote back. */
+    uint64_t _cap_${p.name};
+% endif
 % if GEN.is_output_com_handle_single(p):
     /* Shadow: guest-allocated id for ${p.name}. */
     uint64_t _guest_id_${p.name};
@@ -682,11 +687,9 @@ ${' ' * (len('npt_decode_') + len(fname) + len('_args_temp') + 1)}struct npt_com
 {
 <%
     GEN.begin_decode()
-    _decode_body = '\n'.join(GEN.decode_input_param(p, 'args->')
-                             for p in func.params)
+    _decode_body = GEN.decode_input_params(func.params, 'args->')
     _count_decls = GEN.counted_array_decls()
     _count_checks = GEN.counted_array_checks()
-    _slot_checks = GEN.slot_range_checks(func.params, 'args->')
 %>\
 % if _count_decls:
 ${_count_decls}
@@ -695,9 +698,6 @@ ${_count_decls}
 ${_decode_body}
 % if _count_checks:
 ${_count_checks}
-% endif
-% if _slot_checks:
-${_slot_checks}
 % endif
     /* Allocate temp storage for output-only parameters */
 % for p in func.params:
@@ -751,7 +751,7 @@ ${' ' * (len('npt_encode_') + len(fname) + len('_reply') + 1)}const struct npt_c
         npt_encode_array_count(enc, 0);
     }
 % else:
-${GEN.encode_output_param(p, 'args->')}
+${GEN.encode_output_param(p, 'args->', failed=('(HRESULT)args->ret < 0' if func.return_type == 'HRESULT' else None))}
 % endif
 % endfor
 % endif

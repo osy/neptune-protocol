@@ -15,6 +15,17 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wpointer-arith"
+% if IS_HOST:
+
+/* a * b, or UINT64_MAX when the product does not fit: a count no stream
+ * can hold, so every bound checked against it fails. */
+static inline uint64_t
+npt_mul_sat_u64(uint64_t a, uint64_t b)
+{
+    uint64_t r;
+    return __builtin_mul_overflow(a, b, &r) ? UINT64_MAX : r;
+}
+% endif
 
 /* Forward declarations: structs with mutual recursion (e.g.
  * D3D12_STATE_SUBOBJECT ↔ D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION via the
@@ -57,10 +68,7 @@ ${GEN.encode_field(item, 'val->')}
 
 <%
     GEN.begin_decode()
-    _decode_body = '\n'.join(
-        GEN.decode_bitfield(item[1], 'val->') if isinstance(item, tuple)
-        else GEN.decode_field(item, 'val->', alloc_temp=True)
-        for item in processed)
+    _decode_body = GEN.decode_struct_body(ty, processed, 'val->')
     _count_decls = GEN.counted_array_decls()
     _count_checks = GEN.counted_array_checks(in_struct=True)
 %>\

@@ -232,7 +232,10 @@ npt_cs_decoder_alloc_temp(struct npt_cs_decoder *dec, size_t size)
    node->next = dec->temp_head;
    dec->temp_head = node;
    void *ptr = (void *)(node + 1);
-   memset(ptr, 0, size);
+   /* The consumer's pool hands back memory the previous command left
+    * behind, not zeros; poison it so a decoder that relies on zeroing
+    * fails here too. */
+   memset(ptr, 0xA5, size);
    return ptr;
 }
 

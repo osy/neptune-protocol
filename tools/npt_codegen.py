@@ -70,6 +70,12 @@ class Gen:
         # Counted input arrays decoded so far in the command currently being
         # emitted, as (wire-count variable, count expression) pairs.
         self._counted_arrays: list = []
+        # (field, C expression): inside encode_output_param, the count to
+        # encode for that field in place of its count expression.
+        self._count_override = None
+        # The host decoder emitted an unconditional fatal return; nothing
+        # after it in the same decode function can run.
+        self._decode_ended = False
 
     # ------------------------------------------------------------------
     # Counted-array bounds checks
@@ -79,6 +85,7 @@ class Gen:
         """Start a decode function: a command's input parameters or a
         struct's fields."""
         self._counted_arrays = []
+        self._decode_ended = False
         return ''
 
     def _count_var(self, field):
@@ -129,7 +136,8 @@ class Gen:
         it and goes on, because the fields after it have been consumed
         already and its caller decodes on; the dispatcher will not run a
         command that decoded fatal."""
-        if not self._counted_arrays:
+        if not self._counted_arrays or self._decode_ended:
+            self._counted_arrays = []
             return ''
         ind = '    ' * indent
         lines = [f'{ind}/* A counted array must hold every element the callee'
@@ -154,9 +162,12 @@ class Gen:
         self._counted_arrays = []
         return '\n'.join(lines)
 
-    def slot_range_checks(self, params, prefix: str,
-                          indent: int = 1) -> str:
-        """Reject a binding run that leaves the slot table the API fixes.
+    def slot_range_checks_after(self, params, param, prefix: str,
+                                indent: int = 1) -> str:
+        """Reject a binding run that leaves the slot table the API fixes,
+        emitted right after `param` -- the last of the run's parameters to
+        decode -- so a forbidden run is refused before any array sized by
+        it is allocated.
 
         A call such as PSSetConstantBuffers names a run of slots,
         [StartSlot, StartSlot + NumBuffers), in a table of a size the API
@@ -164,19 +175,41 @@ class Gen:
         decoder applies the same limit before the call reaches the backend.
         The sum is taken in 64 bits: a 32-bit one wraps, and StartSlot
         0xFFFFFFFF with NumBuffers 2 would pass.  A count equal to the
-        'keep' sentinel leaves the bindings alone and selects no slots."""
+        'keep' sentinel leaves the bindings alone and selects no slots.
+        'after' names a parameter the run must not start below while it
+        is non-empty (OMSetRenderTargetsAndUnorderedAccessViews: UAVs
+        follow the render targets), unless that parameter equals
+        'after_keep'."""
+        if self._decode_ended:
+            return ''
+        order = {p.name: i for i, p in enumerate(params)}
         ind = '    ' * indent
         lines = []
         for p in params:
             sr = p.slot_range
             if not sr:
                 continue
-            run = f'(uint64_t){prefix}{p.name}'
+            deps = [p.name] + [sr[k] for k in ('start', 'after') if k in sr]
+            if max(order[d] for d in deps) != order[param.name]:
+                continue
+            count = f'{prefix}{p.name}'
+            run = f'(uint64_t){count}'
             if 'start' in sr:
                 run = f'(uint64_t){prefix}{sr["start"]} + {run}'
-            cond = f'{run} > (uint64_t)({sr["limit"]})'
+            conds = [f'{run} > (uint64_t)({sr["limit"]})']
+            if 'after' in sr:
+                below = [f'{count} != 0',
+                         f'(uint64_t){prefix}{sr["start"]} < '
+                         f'(uint64_t){prefix}{sr["after"]}']
+                if 'after_keep' in sr:
+                    below.insert(1, f'{prefix}{sr["after"]} != '
+                                    f'({sr["after_keep"]})')
+                conds.append('(' + ' && '.join(below) + ')')
+            cond = f' ||\n{ind}    '.join(conds)
+            if len(conds) > 1:
+                cond = f'({cond})'
             if 'keep' in sr:
-                cond = f'{prefix}{p.name} != ({sr["keep"]}) &&\n{ind}    {cond}'
+                cond = f'{count} != ({sr["keep"]}) &&\n{ind}    {cond}'
             lines += [f'{ind}if ({cond}) {{',
                       f'{ind}    npt_cs_decoder_set_fatal(dec);',
                       f'{ind}    return;',
@@ -185,6 +218,35 @@ class Gen:
             return ''
         return '\n'.join([f'{ind}/* A binding run must stay inside the slot'
                           f' table the API fixes. */'] + lines)
+
+    def decode_input_params(self, params, prefix: str,
+                            canonical: bool = False) -> str:
+        """Decode a command's input parameters, each slot-range check
+        right after the parameters it reads."""
+        out = []
+        for p in params:
+            out.append(self.decode_input_param(p, prefix, canonical=canonical))
+            out.append(self.slot_range_checks_after(params, p, prefix))
+        return '\n'.join(x for x in out if x)
+
+    def decode_struct_body(self, ty, items, prefix: str) -> str:
+        """Decode a struct's fields, stopping after one whose decoder
+        unconditionally rejects the struct."""
+        out = []
+        for item in items:
+            if isinstance(item, tuple):
+                out.append(self.decode_bitfield(item[1], prefix))
+                continue
+            out.append(self.decode_field(item, prefix, alloc_temp=True))
+            if ty.category == Category.STRUCT and self._ends_decode(item):
+                self._decode_ended = True
+                break
+        return '\n'.join(out)
+
+    def _ends_decode(self, field) -> bool:
+        """The host decoder of `field` returns fatal unconditionally."""
+        return (self.is_host and field.is_non_serializable
+                and not field.optional and field.condition is None)
 
     def set_context(self, ctx: str):
         """Set the current context (struct/method name) for warning messages."""
@@ -545,6 +607,10 @@ class Gen:
         post-dispatch register pass knows which id maps to the host
         pointer dxvk fills in."""
         ind = '    ' * indent
+        if self._decode_ended:
+            return ''
+        if self._ends_decode(field) and field.input:
+            self._decode_ended = True
         if self.is_output_com_handle(field):
             count_expr = self._get_count_expr(field, prefix)
             if count_expr:
@@ -604,17 +670,36 @@ class Gen:
         return self.decode_field(field, prefix, alloc_temp=True, indent=indent,
                                  inline_storage=False, is_param=True)
 
+    def has_output_capacity(self, field: NptField) -> bool:
+        """An output-only array the host allocates from a count the guest
+        sent (GetPrivateData's pData, sized by *pDataSize).  The callee
+        may rewrite that count -- GetPrivateData stores the size of the
+        data it holds -- so the reply cannot trust it to describe the
+        allocation.  The host records the allocated element count in
+        `_cap_<name>` and never encodes more."""
+        return (self.is_host and field.output and not field.input
+                and field.indirection == 1
+                and not self.is_output_com_handle(field)
+                and self._get_count_expr(field, '') is not None)
+
     def alloc_output_param(self, field: NptField, prefix: str,
                            indent: int = 1) -> str:
         """Allocate temp storage for an output-only parameter.
         Called after all input params are decoded, so size fields are
         available.  Output COM handles are already allocated inside
         decode_input_param (they carry a guest_id on the wire now)."""
+        if self._decode_ended:
+            return ''
         if self.is_output_com_handle(field):
             return ''
         if field.input or not field.output:
             return ''
-        return self._decode_output_alloc(field, prefix, indent)
+        code = self._decode_output_alloc(field, prefix, indent)
+        if self.is_host and field.indirection == 1 and \
+                field.type_name in ('void', 'VOID') and \
+                self._get_count_expr(field, prefix) is None:
+            self._decode_ended = True
+        return code
 
     def sizeof_output_param(self, field: NptField, prefix: str, dst: str,
                             canonical: bool = False) -> str:
@@ -646,8 +731,12 @@ class Gen:
         return self.sizeof_field(field, prefix, dst, for_output=True)
 
     def encode_output_param(self, field: NptField, prefix: str,
-                            canonical: bool = False) -> str:
-        """Encode a reply output parameter (host-side)."""
+                            canonical: bool = False,
+                            failed: Optional[str] = None) -> str:
+        """Encode a reply output parameter (host-side).  `failed` is a C
+        condition true when the call failed; an output array with a
+        capacity then carries nothing, so the guest leaves the caller's
+        buffer as the API does (GetPrivateData's DXGI_ERROR_MORE_DATA)."""
         if self.is_output_com_handle(field):
             if not canonical:
                 return (f'/* skip {prefix}{field.name} (guest-allocated id, '
@@ -667,7 +756,23 @@ class Gen:
                     f'&{prefix}_ref_{field.name});')
         if not field.output:
             return f'/* skip {prefix}{field.name} (input only) */'
-        return self.encode_field(field, prefix, for_output=True)
+        if not self.has_output_capacity(field):
+            return self.encode_field(field, prefix, for_output=True)
+        raw = self._get_output_count_expr(field, prefix)
+        cap = f'{prefix}_cap_{field.name}'
+        n = f'_n_{field.name}'
+        bounded = f'(uint64_t)({raw}) < {cap} ? (uint64_t)({raw}) : {cap}'
+        if failed:
+            bounded = f'({failed}) ? 0 : ({bounded})'
+        self._count_override = (field, n)
+        try:
+            body = self.encode_field(field, prefix, for_output=True)
+        finally:
+            self._count_override = None
+        return '\n'.join([f'    {{',
+                          f'        const uint64_t {n} = {bounded};',
+                          *(f'    {l}' for l in body.split('\n')),
+                          f'    }}'])
 
     def decode_output_param(self, field: NptField, prefix: str,
                             canonical: bool = False) -> str:
@@ -1031,6 +1136,20 @@ class Gen:
     def _get_count_expr(self, field, prefix):
         """Get the C expression for the array count of a pointer field.
         Returns the expression string, or None if the count is unknown."""
+        if self._count_override and self._count_override[0] is field:
+            return self._count_override[1]
+        return self._get_count_expr_raw(field, prefix)
+
+    @staticmethod
+    def _mul_sat(terms):
+        """The product of `terms` saturating at UINT64_MAX, a count no
+        stream can hold, so every bound checked against it fails."""
+        expr = f'(uint64_t)({terms[0]})'
+        for t in terms[1:]:
+            expr = f'npt_mul_sat_u64({expr}, (uint64_t)({t}))'
+        return expr
+
+    def _get_count_expr_raw(self, field, prefix):
         prefix = self._sibling_prefix(prefix)
         size = field.count
         if size is None:
@@ -1045,6 +1164,8 @@ class Gen:
             return str(size)
 
         if isinstance(size, list):
+            if self.is_host and len(size) > 1:
+                return self._mul_sat([str(d) for d in size])
             return ' * '.join(str(d) for d in size)
 
         if isinstance(size, str):
@@ -1060,6 +1181,11 @@ class Gen:
             optional = field._size_optional
             c_terms = [self._resolve_size_term(t, prefix, deref, optional)
                        for t in terms]
+            # The host checks and allocates with this product, so it must
+            # not wrap, and a UINT64 term (D3D12_NODE_CPU_INPUT's
+            # RecordStrideInBytes) wraps even in 64 bits.
+            if self.is_host and len(c_terms) > 1:
+                return self._mul_sat(c_terms)
             return ' * '.join(c_terms)
 
         return None
@@ -1067,6 +1193,13 @@ class Gen:
     def _get_output_count_expr(self, field, prefix):
         """Get the output count expression from the count_output field."""
         prefix = self._sibling_prefix(prefix)
+        if self._count_override and self._count_override[0] is field:
+            return self._count_override[1]
+        if field.count_output:
+            return self._get_output_count_expr_raw(field, prefix)
+        return self._get_count_expr(field, prefix)
+
+    def _get_output_count_expr_raw(self, field, prefix):
         if field.count_output:
             deref = field._size_output_deref
             if deref < 0:
@@ -1085,6 +1218,12 @@ class Gen:
         """Emit the non-serializable skip or error block for ``op``."""
         if field.optional:
             return [f'/* {field.name}: non-serializable, skipped */']
+        # The host cannot rebuild the pointer, and the fields after it are
+        # not on the wire either: a decoder that met one would hand the
+        # callee whatever its storage held, so the call is rejected.
+        if self.is_host and op == 'decode':
+            return [f'/* {field.name} ({field.type_name}) is not serializable */',
+                    'npt_cs_decoder_set_fatal(dec);', 'return;']
         return [f'/* ERROR: {field.name} ({field.type_name}) is not serializable */',
                 *_NON_SERIALIZABLE_RETURN[op]]
 
@@ -1608,12 +1747,45 @@ class Gen:
     # Internal: decode generation
     # ------------------------------------------------------------------
 
+    def _struct_unrepresentable(self, type_name, _seen=None):
+        """A struct with a required, unconditional field the wire cannot
+        carry, directly or through a by-value member struct.  A union is
+        not looked into: its codec carries the arm the discriminator
+        selects (D3D12_STATE_SUBOBJECT's pDesc)."""
+        t = self.reg.types.get(type_name)
+        if not t or t.category != Category.STRUCT:
+            return False
+        seen = _seen or set()
+        if type_name in seen:
+            return False
+        seen.add(type_name)
+        for f in t.fields:
+            if f.is_non_serializable and not f.optional and f.condition is None:
+                return True
+            if (f.indirection == 0 and f.type_name
+                    and self._struct_unrepresentable(f.type_name, seen)):
+                return True
+        return False
+
     def _decode_field_impl(self, field, prefix, alloc_temp,
                            inline_storage=True, is_param=False):
         acc = self._acc(field, prefix)
 
         if field.is_non_serializable:
             return self._non_serializable_err(field, 'decode')
+
+        # An array of structs the wire cannot carry (D3D11_SUBRESOURCE_DATA,
+        # whose pSysMem is a guest pointer) is rejected whenever it is
+        # present -- also present but empty, which decodes no element and
+        # so never reaches the element decoder's own rejection.
+        if (self.is_host and field.indirection >= 1 and field.count is not None
+                and self._struct_unrepresentable(field.type_name)):
+            return [f'/* {field.name}: {field.type_name} is not serializable */',
+                    f'if (npt_decode_array_count_unchecked(dec)) {{',
+                    f'    npt_cs_decoder_set_fatal(dec);',
+                    f'    return;',
+                    f'}}',
+                    f'{acc} = NULL;']
 
         # Handle annotations — COM handles handle all cases (single, double-ptr,
         # array); Win32 handle arrays fall through to the unsized check.
@@ -1888,6 +2060,8 @@ class Gen:
                 f'    {self._has_var(cnt)} = 1;',
                 f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name} *), {cnt} ? {cnt} : 1);',
                 f'    if (!{acc}) return;',
+                *([f'    if (!{cnt}) memset((void *){acc}, 0, sizeof({field.type_name} *));']
+                  if self.is_host else []),
                 f'    for (uint32_t _i = 0; _i < (uint32_t){cnt}; _i++) {{',
                 f'        {field.type_name} *_elem = npt_cs_decoder_alloc_temp(dec, sizeof({field.type_name}));',
                 f'        if (!_elem) return;',
@@ -1952,6 +2126,10 @@ class Gen:
                 f'    {acc} = npt_cs_decoder_alloc_temp_array(dec, '
                 f'sizeof({field.type_name}), {cnt} ? {cnt} : 1);',
                 f'    if (!{acc}) return;',
+                *([f'    /* Present but empty: a callee that walks it anyway '
+                   f'reads zeros, not the previous command. */',
+                   f'    if (!{cnt}) memset((void *){acc}, 0, sizeof({field.type_name}));']
+                  if self.is_host else []),
                 *elem,
                 f'}} else {{',
                 f'    {acc} = NULL;',
@@ -2085,22 +2263,29 @@ class Gen:
         if field.indirection == 1 and field.output:
             # Use the size field if available (for blob outputs like void* with size)
             size_expr = self._get_count_expr(field, prefix)
+            cap = (f'\n{ind}{prefix}_cap_{field.name} = {acc} ? '
+                   f'(uint64_t)({size_expr}) : 0;'
+                   if self.has_output_capacity(field) else '')
             if size_expr and field.type_name in ('void', 'VOID'):
                 return self._alloc_temp_guarded(
                     acc, size_expr,
                     f'npt_cs_decoder_alloc_temp(dec, {size_expr})',
-                    size_expr, ind)
+                    size_expr, ind) + cap
             if size_expr:
                 return self._alloc_temp_guarded(
                     acc, size_expr,
                     f'npt_cs_decoder_alloc_temp_array(dec, sizeof({field.type_name}), {size_expr})',
-                    f'sizeof({field.type_name}) * {size_expr}', ind)
+                    f'sizeof({field.type_name}) * {size_expr}', ind) + cap
             # Unsized void* output (e.g. ID3D11Device3::ReadFromSubresource
-            # pDstData): the method is skipped from serialization, but the
-            # dispatcher still needs a non-NULL backing slot so the original
-            # call doesn't crash.  `sizeof(void)` is a GNU extension; use a
-            # one-byte fallback that's portable across compilers.
-            elem_size = '1' if field.type_name in ('void', 'VOID') else f'sizeof({field.type_name})'
+            # pDstData): nothing tells the host how much the callee writes,
+            # so no allocation can hold it.  The call is rejected.
+            if field.type_name in ('void', 'VOID'):
+                return '\n'.join([
+                    f'{ind}/* {field.name} ({field.type_name}) is not serializable */',
+                    f'{ind}npt_cs_decoder_set_fatal(dec);',
+                    f'{ind}return;',
+                ])
+            elem_size = f'sizeof({field.type_name})'
             return '\n'.join([
                 f'{ind}{acc} = npt_cs_decoder_alloc_temp(dec, {elem_size});',
                 f'{ind}if (!{acc}) return;',

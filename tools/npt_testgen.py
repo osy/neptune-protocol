@@ -148,10 +148,10 @@ class Field:
 
 
 def _slot_starts(params):
-    """Names of the params that open a slot_range run.  The host rejects
-    a run that leaves its table, so these start at slot 0 instead of a
-    random value."""
-    return {p.slot_range['start'] for p in params
+    """{start param: param it must not start below, or None} for every
+    slot_range run.  The host rejects a run that leaves its table, so a
+    start is 0, or the 'after' param's value, instead of a random value."""
+    return {p.slot_range['start']: p.slot_range.get('after') for p in params
             if p.slot_range and 'start' in p.slot_range}
 
 
@@ -1621,6 +1621,18 @@ def _gen_host_encode_reply(out, reg, iface, method, fname, is_toplevel, idx):
 
 
 
+def _has_output_capacity(p):
+    """Mirror of the host codegen's has_output_capacity: an output-only
+    counted array the host allocates and records in `_cap_<name>`."""
+    return (p.output and not p.input and p.indirection == 1
+            and p.count is not None and p.handle != 'com')
+
+
+def _write_capacity(out, p, prefix):
+    if prefix == 'args.' and _has_output_capacity(p):
+        out.write(f'    {prefix}_cap_{p.name} = {prefix}{p.name} ? _cnt : 0;\n')
+
+
 def _gen_method_param_init(out, reg, params, fields_map, prefix,
                            output_only=False, for_reply=False):
     """Generate initialization code for method params."""
@@ -1735,7 +1747,9 @@ def _gen_method_param_init(out, reg, params, fields_map, prefix,
                 out.write(f'        npt_test_fill((void *){prefix}{p.name}, _cnt, &seed);\n')
                 out.write(f'    }} else {{\n')
                 out.write(f'        {prefix}{p.name} = (style == NPT_STYLE_COUNT_ZERO_PTR_NULL) ? NULL : npt_test_alloc(1);\n')
-                out.write(f'    }} }}\n')
+                out.write(f'    }}\n')
+                _write_capacity(out, p, prefix)
+                out.write(f'    }}\n')
             continue
 
         if cls == 'STRING_ARRAY':
@@ -1781,7 +1795,9 @@ def _gen_method_param_init(out, reg, params, fields_map, prefix,
                                   f'sizeof({p.type_name}) * _cnt, &seed);\n')
                 out.write(f'    }} else {{\n')
                 out.write(f'        {prefix}{p.name} = (style == NPT_STYLE_COUNT_ZERO_PTR_NULL) ? NULL : npt_test_alloc(1);\n')
-                out.write(f'    }} }}\n')
+                out.write(f'    }}\n')
+                _write_capacity(out, p, prefix)
+                out.write(f'    }}\n')
             continue
 
         if cls == 'SIMPLE_POINTER':
@@ -1834,7 +1850,9 @@ def _gen_method_param_init(out, reg, params, fields_map, prefix,
                     # Builtin or anonymous struct: fill with random data
                     out.write(f'    npt_test_fill(&{prefix}{p.name}, sizeof({p.type_name}), &seed);\n')
                 elif p.name in _slot_starts(params):
-                    out.write(f'    {prefix}{p.name} = 0;\n')
+                    after = _slot_starts(params)[p.name]
+                    out.write(f'    {prefix}{p.name} = '
+                              f'{prefix + after if after else "0"};\n')
                 elif p.slot_range:
                     # A capped count whose array is sized by an expression
                     # (D3D12 OMSetRenderTargets): random, but inside the table.
@@ -2668,7 +2686,9 @@ def _gen_method_param_init_guest(out, reg, params, fields_map, prefix):
                 out.write(f'        npt_test_fill((void *){prefix}{p.name}, _cnt, &seed);\n')
                 out.write(f'    }} else {{\n')
                 out.write(f'        {prefix}{p.name} = (style == NPT_STYLE_COUNT_ZERO_PTR_NULL) ? NULL : npt_test_alloc(1);\n')
-                out.write(f'    }} }}\n')
+                out.write(f'    }}\n')
+                _write_capacity(out, p, prefix)
+                out.write(f'    }}\n')
             continue
 
         if cls in ('FIXED_ARRAY', 'COUNTED_ARRAY'):
@@ -2699,7 +2719,9 @@ def _gen_method_param_init_guest(out, reg, params, fields_map, prefix):
                                   f'sizeof({p.type_name}) * _cnt, &seed);\n')
                 out.write(f'    }} else {{\n')
                 out.write(f'        {prefix}{p.name} = (style == NPT_STYLE_COUNT_ZERO_PTR_NULL) ? NULL : npt_test_alloc(1);\n')
-                out.write(f'    }} }}\n')
+                out.write(f'    }}\n')
+                _write_capacity(out, p, prefix)
+                out.write(f'    }}\n')
             continue
 
         if cls == 'SIMPLE_POINTER':
@@ -2730,7 +2752,9 @@ def _gen_method_param_init_guest(out, reg, params, fields_map, prefix):
                     # Builtin or anonymous struct: fill with random data
                     out.write(f'    npt_test_fill(&{prefix}{p.name}, sizeof({p.type_name}), &seed);\n')
                 elif p.name in _slot_starts(params):
-                    out.write(f'    {prefix}{p.name} = 0;\n')
+                    after = _slot_starts(params)[p.name]
+                    out.write(f'    {prefix}{p.name} = '
+                              f'{prefix + after if after else "0"};\n')
                 elif p.slot_range:
                     # A capped count whose array is sized by an expression
                     # (D3D12 OMSetRenderTargets): random, but inside the table.

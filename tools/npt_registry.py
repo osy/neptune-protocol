@@ -107,11 +107,13 @@ class NptField:
     # A count parameter that, with an optional start parameter, selects a
     # run of slots in a table the API fixes in size (D3D11's 14 constant
     # buffer slots, D3D12's 32 vertex buffer slots):
-    # {'limit': <C constant>, 'start': <sibling param>, 'keep': <C constant>}.
+    # {'limit': <C constant>, 'start': <sibling param>, 'keep': <C constant>,
+    #  'after': <sibling param>, 'after_keep': <C constant>}.
     # The host decoder rejects a run that leaves the table, unless the
-    # count equals 'keep' (a sentinel meaning "leave the bindings alone").
-    # With no 'start', a param that is an index rather than a count is
-    # bounded the same way: it must not exceed 'limit'.
+    # count equals 'keep' (a sentinel meaning "leave the bindings alone"),
+    # and a non-empty run starting below 'after' unless 'after' equals
+    # 'after_keep'.  With no 'start', a param that is an index rather than
+    # a count is bounded the same way: it must not exceed 'limit'.
     slot_range: Optional[dict] = None
     value: Optional[int] = None  # for enum fields
     handle: Optional[str] = None  # 'com', 'win32', or None
@@ -950,12 +952,18 @@ class TypeRegistry:
             if not sr:
                 continue
             where = f"slot_range on '{param.name}' in {context}"
-            unknown = set(sr) - {'limit', 'start', 'keep'}
+            unknown = set(sr) - {'limit', 'start', 'keep', 'after',
+                                 'after_keep'}
             if unknown:
                 raise ValueError(f"{where}: unknown keys {sorted(unknown)}")
             if 'limit' not in sr:
                 raise ValueError(f"{where}: needs a 'limit'")
-            for name in [param.name] + ([sr['start']] if 'start' in sr else []):
+            if 'after' in sr and 'start' not in sr:
+                raise ValueError(f"{where}: 'after' needs a 'start'")
+            if 'after_keep' in sr and 'after' not in sr:
+                raise ValueError(f"{where}: 'after_keep' needs an 'after'")
+            for name in [param.name] + [sr[k] for k in ('start', 'after')
+                                        if k in sr]:
                 p = by_name.get(name)
                 if p is None:
                     raise ValueError(f"{where}: no parameter '{name}'")
